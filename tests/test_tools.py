@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from glyx_mcp.composable_agent import AgentKey
+from glyx_mcp.composable_agent import AgentKey, AgentResult
 from glyx_mcp.tools.use_aider import use_aider
 from glyx_mcp.tools.use_grok import use_grok
 
@@ -18,8 +18,16 @@ class TestUseAider:
     async def test_use_aider_basic(self) -> None:
         """Test use_aider with basic parameters."""
         # Arrange
+        mock_result = AgentResult(
+            stdout="Aider response: Code updated successfully",
+            stderr="",
+            exit_code=0,
+            timed_out=False,
+            execution_time=2.5,
+            command=["aider", "--message", "test"]
+        )
         mock_agent = MagicMock()
-        mock_agent.execute = AsyncMock(return_value="Aider response: Code updated successfully")
+        mock_agent.execute = AsyncMock(return_value=mock_result)
 
         with patch("glyx_mcp.tools.use_aider.ComposableAgent.from_key", return_value=mock_agent) as mock_from_key:
             # Act
@@ -49,8 +57,16 @@ class TestUseGrok:
     async def test_use_grok_basic(self) -> None:
         """Test use_grok with basic parameters."""
         # Arrange
+        mock_result = AgentResult(
+            stdout="Grok response: The answer is 42",
+            stderr="",
+            exit_code=0,
+            timed_out=False,
+            execution_time=1.2,
+            command=["opencode", "run"]
+        )
         mock_agent = MagicMock()
-        mock_agent.execute = AsyncMock(return_value="Grok response: The answer is 42")
+        mock_agent.execute = AsyncMock(return_value=mock_result)
 
         with patch("glyx_mcp.tools.use_grok.ComposableAgent.from_key", return_value=mock_agent) as mock_from_key:
             # Act

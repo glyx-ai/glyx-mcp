@@ -58,7 +58,7 @@ async def agent_prompt(
 
     try:
         result = await ComposableAgent.from_key(agent_key).execute(task_config, timeout=300)
-        return result
+        return result.output
     except Exception as e:
         logger.error(f"Error executing {agent_name}: {e}")
         return f"Error executing {agent_name}: {str(e)}"
@@ -80,7 +80,7 @@ async def aider_prompt(task: str, files: str, model: str = "gpt-5", read_files: 
 
     try:
         result = await ComposableAgent.from_key(AgentKey.AIDER).execute(task_config, timeout=300)
-        return result
+        return result.output
     except Exception as e:
         logger.error(f"Error executing Aider: {e}")
         return f"Error executing Aider: {str(e)}"
@@ -98,7 +98,7 @@ async def grok_prompt(question: str, model: str = "openrouter/x-ai/grok-4-fast")
 
     try:
         result = await ComposableAgent.from_key(AgentKey.GROK).execute(task_config, timeout=300)
-        return result
+        return result.output
     except Exception as e:
         logger.error(f"Error executing Grok: {e}")
         return f"Error executing Grok: {str(e)}"
@@ -125,7 +125,7 @@ async def claude_prompt(
 
     try:
         result = await ComposableAgent.from_key(AgentKey.CLAUDE).execute(task_config, timeout=600)
-        return result
+        return result.output
     except Exception as e:
         logger.error(f"Error executing Claude: {e}")
         return f"Error executing Claude: {str(e)}"

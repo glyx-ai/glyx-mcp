@@ -23,4 +23,5 @@ async def use_grok(
         "model": model,
     }
 
-    return await ComposableAgent.from_key(AgentKey.GROK).execute(task_config, timeout=300)
+    result = await ComposableAgent.from_key(AgentKey.GROK).execute(task_config, timeout=300)
+    return result.output

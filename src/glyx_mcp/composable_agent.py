@@ -3,11 +3,36 @@
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from time import time
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
+
+
+# Custom Exceptions
+class AgentError(Exception):
+    """Base exception for agent errors."""
+    pass
+
+
+class AgentTimeoutError(AgentError):
+    """Raised when agent execution times out."""
+    pass
+
+
+class AgentExecutionError(AgentError):
+    """Raised when agent execution fails."""
+    pass
+
+
+class AgentConfigError(AgentError):
+    """Raised when agent configuration is invalid."""
+    pass
 
 
 class AgentKey(str, Enum):
@@ -21,25 +46,59 @@ class AgentKey(str, Enum):
     KIMI_K2 = "kimi_k2"
 
 
-class AgentConfig:
-    """Agent configuration from JSON."""
+@dataclass
+class AgentResult:
+    """Structured result from agent execution."""
+    stdout: str
+    stderr: str
+    exit_code: int
+    timed_out: bool = False
+    execution_time: float = 0.0
+    command: list[str] | None = None
 
-    def __init__(
-        self,
-        agent_key: str,
-        command: str,
-        args: dict[str, dict[str, Any]],
-        description: str | None = None,
-        **kwargs: Any,
-    ):
-        self.agent_key = agent_key
-        self.command = command
-        self.args = args
-        self.description = description
+    @property
+    def success(self) -> bool:
+        """Check if execution was successful."""
+        return self.exit_code == 0 and not self.timed_out
+
+    @property
+    def output(self) -> str:
+        """Get combined output (for backward compatibility)."""
+        result = self.stdout
+        if self.stderr:
+            result += f"\nSTDERR: {self.stderr}"
+        return result
+
+
+class ArgSpec(BaseModel):
+    """Specification for a single command-line argument."""
+    flag: str = ""  # Empty string for positional args
+    type: Literal["string", "bool", "int"] = "string"
+    required: bool = False
+    default: str | int | bool | None = None
+    description: str = ""
+
+    @field_validator('type')
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        """Ensure type is valid."""
+        if v not in ["string", "bool", "int"]:
+            raise ValueError(f"Invalid arg type: {v}")
+        return v
+
+
+class AgentConfig(BaseModel):
+    """Agent configuration from JSON - validated with Pydantic."""
+    agent_key: str
+    command: str = Field(..., min_length=1)  # Must be non-empty
+    args: dict[str, ArgSpec]
+    description: str | None = None
+    version: str | None = None
+    capabilities: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_file(cls, file_path: str | Path) -> "AgentConfig":
-        """Load config from JSON file."""
+        """Load and validate config from JSON file."""
         with open(file_path) as f:
             data = json.load(f)
 
@@ -47,6 +106,7 @@ class AgentConfig:
         agent_data = data[agent_key]
         agent_data["agent_key"] = agent_key
 
+        # Pydantic validates automatically on instantiation
         return cls(**agent_data)
 
 
@@ -70,37 +130,82 @@ class ComposableAgent:
         file_path = config_dir / f"{key.value}.json"
         return cls.from_file(file_path)
 
-    async def execute(self, task_config: dict[str, Any], timeout: int = 30) -> str:
-        """Parse args and execute command."""
+    async def execute(self, task_config: dict[str, Any], timeout: int = 30) -> AgentResult:
+        """Parse args and execute command, returning structured result."""
+        start_time = time()
         cmd = [self.config.command]
 
         # Add all arguments with values from task_config or defaults
-        for key, details in self.config.args.items():
-            value = task_config.get(key, details.get("default"))
+        for key, arg_spec in self.config.args.items():
+            value = task_config.get(key, arg_spec.default)
             if value is not None:
-                flag = details.get("flag")
+                flag = arg_spec.flag
                 if not flag:
-                    if details.get("type") == "bool":
+                    if arg_spec.type == "bool":
                         if value:
                             cmd.append(str(value))
                     else:
                         cmd.append(str(value))
                 else:
-                    if details.get("type") == "bool":
+                    if arg_spec.type == "bool":
                         if value:
                             cmd.append(flag)
                     else:
                         cmd.extend([flag, str(value)])
 
-        logger.info(f"Executing: {' '.join(cmd)}")
-
-        process = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        logger.info(
+            f"Executing agent '{self.config.agent_key}'",
+            extra={
+                "agent": self.config.agent_key,
+                "command": " ".join(cmd),
+                "timeout": timeout,
+            }
         )
 
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
 
-        result = stdout.decode() if stdout else ""
-        if stderr:
-            result += f"\nSTDERR: {stderr.decode()}"
-        return result
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=timeout
+            )
+
+            execution_time = time() - start_time
+
+            result = AgentResult(
+                stdout=stdout.decode() if stdout else "",
+                stderr=stderr.decode() if stderr else "",
+                exit_code=process.returncode,
+                timed_out=False,
+                execution_time=execution_time,
+                command=cmd
+            )
+
+            logger.info(
+                f"Agent '{self.config.agent_key}' completed",
+                extra={
+                    "agent": self.config.agent_key,
+                    "exit_code": result.exit_code,
+                    "execution_time": result.execution_time,
+                    "success": result.success
+                }
+            )
+
+            return result
+
+        except asyncio.TimeoutError:
+            execution_time = time() - start_time
+            process.kill()
+            await process.wait()
+            raise AgentTimeoutError(
+                f"Agent '{self.config.agent_key}' timed out after {timeout}s"
+            )
+        except Exception as e:
+            execution_time = time() - start_time
+            raise AgentExecutionError(
+                f"Agent '{self.config.agent_key}' execution failed: {e}"
+            ) from e

@@ -31,4 +31,5 @@ async def use_aider(
     if read_files:
         task_config["read_files"] = read_files
 
-    return await ComposableAgent.from_key(AgentKey.AIDER).execute(task_config, timeout=300)
+    result = await ComposableAgent.from_key(AgentKey.AIDER).execute(task_config, timeout=300)
+    return result.output
