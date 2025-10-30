@@ -15,10 +15,12 @@ dependencies = [
 dev = [
     "ruff>=0.3.0",
     "mypy>=1.9.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
 ]
 
 [project.scripts]
-glyx-mcp = "glyx_mcp.server:main"
+glyx-mcp = "glyx_mcp.glyx_mcp_server:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

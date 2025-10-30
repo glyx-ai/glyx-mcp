@@ -23,18 +23,12 @@ def run_opencode(flags: list[str], input_text: str | None = None, timeout: int =
 
     cmd = ["opencode", *flags]
 
-    try:
-        result = subprocess.run(
-            cmd,
-            input=input_text,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        return result.returncode, result.stdout, result.stderr
-    except subprocess.TimeoutExpired:
-        return 124, "", f"opencode execution timeout after {timeout} seconds"
-    except FileNotFoundError:
-        return 127, "", "opencode command not found"
-    except Exception as exc:  # pragma: no cover - unexpected errors
-        return 1, "", str(exc)
+    result = subprocess.run(
+        cmd,
+        input=input_text,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    return result.returncode, result.stdout, result.stderr
+
