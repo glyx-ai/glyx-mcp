@@ -34,9 +34,7 @@ async def agent_prompt(
     working_dir: str | None = None,
     max_turns: int | None = None,
 ) -> str:
-    """
-    Deploy any valid ComposableAgent as a subprocess to execute TaskConfig.
-    """
+    """Execute a task with any configured agent (aider, grok, claude)."""
     try:
         # Validate agent exists
         agent_key = AgentKey(agent_name)
