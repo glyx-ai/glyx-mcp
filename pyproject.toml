@@ -20,7 +20,7 @@ dev = [
 ]
 
 [project.scripts]
-glyx-mcp = "glyx_mcp.glyx_mcp_server:main"
+glyx-mcp = "glyx_mcp.server:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

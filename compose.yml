@@ -1,0 +1,16 @@
+services:
+  glyx-mcp:
+    build: .
+    image: glyx-mcp:latest
+    container_name: glyx-mcp
+    stdin_open: true
+    tty: true
+    environment:
+      # Add your API keys here or use .env file
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      # Mount your project directory so agents can edit files
+      - ${PROJECT_DIR:-.}:/workspace
+    working_dir: /workspace
