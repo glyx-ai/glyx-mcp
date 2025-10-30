@@ -1,0 +1,7 @@
+{
+  "enabled_prompts": [
+    "agent",
+    "aider",
+    "grok"
+  ]
+}

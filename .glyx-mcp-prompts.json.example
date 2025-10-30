@@ -1,0 +1,22 @@
+{
+  "enabled_prompts": [
+    "agent",
+    "aider",
+    "grok"
+  ],
+  "_comment": "Uncomment agents below to enable them as slash commands",
+  "_disabled_prompts": [
+    "claude",
+    "gemini",
+    "codex",
+    "opencode"
+  ],
+  "_documentation": {
+    "enabled_prompts": "List of prompts to register as slash commands (e.g., /glyx-mcp:aider)",
+    "agent": "Always enabled - main composable prompt that can invoke any configured agent",
+    "aider": "Direct access to Aider AI coding assistant",
+    "grok": "Direct access to Grok 4 reasoning model",
+    "claude": "Direct access to Claude Code CLI (requires claude CLI installed)",
+    "context_bloat": "Only enable prompts you frequently use to minimize context window usage"
+  }
+}
