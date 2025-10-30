@@ -1,0 +1,64 @@
+{
+  "aider": {
+    "command": "aider",
+    "version": ">=0.86.0",
+    "args": {
+      "prompt": {
+        "flag": "--message",
+        "required": true,
+        "description": "Message to send to Aider",
+        "type": "string",
+        "default": null
+      },
+      "model": {
+        "flag": "--model",
+        "required": false,
+        "description": "Model to use",
+        "type": "string",
+        "default": "gpt-5"
+      },
+      "files": {
+        "flag": "--file",
+        "required": true,
+        "description": "Files to edit",
+        "type": "string",
+        "default": null
+      },
+      "read_files": {
+        "flag": "--read",
+        "required": false,
+        "description": "Read-only reference files",
+        "type": "string",
+        "default": null
+      },
+      "no_git": {
+        "flag": "--no-git",
+        "required": false,
+        "description": "Do not use git",
+        "type": "bool",
+        "default": true
+      },
+      "yes_always": {
+        "flag": "--yes-always",
+        "required": false,
+        "description": "Always say yes to prompts",
+        "type": "bool",
+        "default": true
+      },
+      "no_pretty": {
+        "flag": "--no-pretty",
+        "required": false,
+        "description": "Disable pretty output",
+        "type": "bool",
+        "default": true
+      },
+      "analytics_disable": {
+        "flag": "--analytics-disable",
+        "required": false,
+        "description": "Disable analytics",
+        "type": "bool",
+        "default": true
+      }
+    }
+  }
+}

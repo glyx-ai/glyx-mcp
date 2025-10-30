@@ -1,0 +1,26 @@
+{
+  "kimi_k2": {
+    "command": "opencode",
+    "args": {
+      "subcmd": {
+        "flag": "",
+        "type": "string",
+        "default": "run",
+        "description": "opencode subcommand (run)"
+      },
+      "model": {
+        "flag": "--model",
+        "type": "string",
+        "default": "openrouter/moonshotai/kimi-k2",
+        "description": "Use Kimi K2 model via OpenRouter"
+      },
+      "prompt": {
+        "flag": "",
+        "type": "string",
+        "default": null,
+        "description": "Message to send to Kimi K2"
+      }
+    },
+    "description": "OpenCode CLI configured with Kimi K2 model"
+  }
+}

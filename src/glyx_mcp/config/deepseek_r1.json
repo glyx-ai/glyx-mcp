@@ -1,0 +1,26 @@
+{
+  "deepseek_r1": {
+    "command": "opencode",
+    "args": {
+      "subcmd": {
+        "flag": "",
+        "type": "string",
+        "default": "run",
+        "description": "opencode subcommand (run)"
+      },
+      "model": {
+        "flag": "--model",
+        "type": "string",
+        "default": "openrouter/deepseek/deepseek-r1:free",
+        "description": "Use DeepSeek R1 reasoning model via OpenRouter"
+      },
+      "prompt": {
+        "flag": "",
+        "type": "string",
+        "default": null,
+        "description": "Message to send to DeepSeek R1"
+      }
+    },
+    "description": "OpenCode CLI configured with DeepSeek R1 model"
+  }
+}

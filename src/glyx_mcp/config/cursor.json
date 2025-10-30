@@ -1,0 +1,25 @@
+{
+  "cursor": {
+    "command": "cursor",
+    "args": {
+      "prompt": {
+        "flag": "--prompt",
+        "required": true,
+        "description": "The prompt to send to Cursor",
+        "type": "string",
+        "default": null
+      },
+      "max_turns": {
+        "flag": "--max-turns",
+        "required": false,
+        "description": "Maximum number of turns",
+        "type": "int",
+        "default": 5
+      }
+    },
+    "capabilities": [
+      "code_editing",
+      "ide_integration"
+    ]
+  }
+}

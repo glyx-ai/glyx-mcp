@@ -1,0 +1,68 @@
+{
+  "codex": {
+    "command": "codex",
+    "version": ">=1.0.0",
+    "exec_mode": true,
+    "args": {
+      "prompt": {
+        "flag": "exec",
+        "required": true,
+        "description": "The prompt to send to Codex",
+        "type": "string",
+        "default": null
+      },
+      "model": {
+        "flag": "--model",
+        "required": false,
+        "description": "Model to use (e.g., o4-mini, o3, gpt-4)",
+        "type": "string",
+        "default": "gpt-5"
+      },
+      "working_dir": {
+        "flag": "--cd",
+        "required": false,
+        "description": "Set working directory for Codex",
+        "type": "string",
+        "default": null
+      },
+      "sandbox": {
+        "flag": "--sandbox",
+        "required": false,
+        "description": "Sandbox mode (workspace-write, read-only)",
+        "type": "string",
+        "default": "workspace-write"
+      },
+      "full_auto": {
+        "flag": "--full-auto",
+        "required": false,
+        "description": "Enable full automation mode",
+        "type": "bool",
+        "default": false
+      },
+      "quiet": {
+        "flag": "--quiet",
+        "required": false,
+        "description": "Quiet mode (minimal output)",
+        "type": "bool",
+        "default": false
+      },
+      "json": {
+        "flag": "--json",
+        "required": false,
+        "description": "Output in JSON format",
+        "type": "bool",
+        "default": false
+      }
+    },
+    "capabilities": [
+      "code_generation",
+      "analysis",
+      "reasoning",
+      "refactoring",
+      "execution",
+      "sandboxing",
+      "interactive",
+      "non_interactive"
+    ]
+  }
+}

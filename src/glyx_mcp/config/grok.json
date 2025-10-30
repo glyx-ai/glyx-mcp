@@ -1,0 +1,26 @@
+{
+  "grok": {
+    "command": "opencode",
+    "args": {
+      "subcmd": {
+        "flag": "",
+        "type": "string",
+        "default": "run",
+        "description": "opencode subcommand (run)"
+      },
+      "model": {
+        "flag": "--model",
+        "type": "string",
+        "default": "openrouter/x-ai/grok-4-fast",
+        "description": "Use Grok 4 Fast model via OpenRouter"
+      },
+      "prompt": {
+        "flag": "",
+        "type": "string",
+        "default": null,
+        "description": "Message to send to Grok via OpenCode"
+      }
+    },
+    "description": "OpenCode CLI configured with Grok-4 model (xAI provider)"
+  }
+}

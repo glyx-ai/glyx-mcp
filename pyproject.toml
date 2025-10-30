@@ -1,0 +1,36 @@
+[project]
+name = "glyx-mcp"
+version = "0.1.0"
+description = "FastMCP server for coding agents with Aider integration"
+readme = "README.md"
+authors = [
+    { name = "htelsiz", email = "hakantelsiz@utexas.edu" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.0",
+    "mypy>=1.9.0",
+]
+
+[project.scripts]
+glyx-mcp = "glyx_mcp.server:main"
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
