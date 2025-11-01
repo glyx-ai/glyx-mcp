@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from glyx_mcp.composable_agent import AgentKey, ComposableAgent
+from glyx_mcp.agents.orchestrator import Orchestrator
+from glyx_mcp.composable_agent import AgentKey, ComposableAgent, TaskConfig
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ def list_available_agents() -> list[str]:
 async def agent_prompt(
     agent_name: str,
     task: str,
-    model: str | None = None,
+    model: str = "gpt-5",
     files: str | None = None,
     read_files: str | None = None,
     working_dir: str | None = None,
@@ -42,22 +43,20 @@ async def agent_prompt(
         available = list_available_agents()
         return f"Unknown agent: {agent_name}. Available agents: {', '.join(available)}"
 
-    # Build task config with only non-None parameters
-    task_config = {"prompt": task}
-
-    if model is not None:
-        task_config["model"] = model
-    if files is not None:
-        task_config["files"] = files
-    if read_files is not None:
-        task_config["read_files"] = read_files
-    if working_dir is not None:
-        task_config["working_dir"] = working_dir
-    if max_turns is not None:
-        task_config["max_turns"] = max_turns
+    # Build task config using Pydantic model
+    task_config = TaskConfig(
+        prompt=task,
+        model=model,
+        files=files,
+        read_files=read_files,
+        working_dir=working_dir,
+        max_turns=max_turns,
+    )
 
     try:
-        result = await ComposableAgent.from_key(agent_key).execute(task_config, timeout=300)
+        result = await ComposableAgent.from_key(agent_key).execute(
+            task_config.model_dump(exclude_none=True), timeout=300
+        )
         return result.output
     except Exception as e:
         logger.error(f"Error executing {agent_name}: {e}")
@@ -129,3 +128,38 @@ async def claude_prompt(
     except Exception as e:
         logger.error(f"Error executing Claude: {e}")
         return f"Error executing Claude: {str(e)}"
+
+
+# Orchestrator prompt - uses GPT-5 to coordinate multiple agents
+async def orchestrate_prompt(
+    task: str,
+) -> str:
+    """
+    Orchestrate complex tasks by coordinating multiple AI agents with deep reasoning.
+
+    The orchestrator uses GPT-5 via OpenAI SDK to:
+    - Analyze the task and break it into steps
+    - Determine which agents to use (aider, grok, claude, etc.)
+    - Execute agents in the optimal order
+    - Synthesize results into a coherent response
+
+    This is ideal for complex workflows that require multiple specialized agents,
+    such as:
+    - Research + code generation + testing
+    - Multi-file refactoring with analysis
+    - Cross-agent reasoning and validation
+
+    Available agents: aider, grok, claude, gemini, codex, deepseek_r1, kimi_k2
+    """
+    try:
+        orchestrator = Orchestrator(model="gpt-5")
+        result = await orchestrator.orchestrate(task)
+
+        # Return the synthesis with additional context if there were errors
+        if not result.success:
+            return f"{result.synthesis}\n\nNote: Some agents encountered errors during execution."
+
+        return result.synthesis
+    except Exception as e:
+        logger.error(f"Error executing orchestrator: {e}")
+        return f"Error executing orchestrator: {str(e)}"

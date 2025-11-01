@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import json
 import logging
-from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
 
+from pydantic import BaseModel, Field
+
 logger = logging.getLogger(__name__)
+
+
+class PromptConfig(BaseModel):
+    """Configuration for enabled MCP prompts."""
+    enabled_prompts: list[str] = Field(default_factory=lambda: ["agent"])
 
 
 def get_config_path() -> Path:
@@ -20,18 +26,19 @@ def get_config_path() -> Path:
     return Path.home() / ".glyx-mcp-prompts.json"
 
 
-def load_prompt_config() -> dict[str, Any]:
+def load_prompt_config() -> PromptConfig:
     """Load prompt configuration from .glyx-mcp-prompts.json
 
     Returns:
-        Dictionary with enabled_prompts list. Defaults to just 'agent' if no config found.
+        PromptConfig with enabled_prompts list. Defaults to just 'agent' if no config found.
     """
     config_path = get_config_path()
 
     if config_path.exists():
         try:
             with open(config_path) as f:
-                config = json.load(f)
+                data = json.load(f)
+                config = PromptConfig(**data)
                 logger.info(f"Loaded prompt config from {config_path}")
                 return config
         except Exception as e:
@@ -39,10 +46,10 @@ def load_prompt_config() -> dict[str, Any]:
 
     # Default: only main agent prompt enabled
     logger.info("No prompt config found, using defaults (only 'agent' enabled)")
-    return {"enabled_prompts": ["agent"]}
+    return PromptConfig()
 
 
-def register_prompts(mcp: Any, prompt_functions: dict[str, Callable]) -> None:
+def register_prompts(mcp: Any, prompt_functions: dict[str, Callable[..., Any]]) -> None:
     """Register prompts that are enabled in config.
 
     Args:
@@ -56,10 +63,9 @@ def register_prompts(mcp: Any, prompt_functions: dict[str, Callable]) -> None:
         })
     """
     config = load_prompt_config()
-    enabled = config.get("enabled_prompts", ["agent"])
 
     for name, func in prompt_functions.items():
-        if name in enabled:
+        if name in config.enabled_prompts:
             mcp.prompt()(func)
             logger.info(f"Registered prompt: {name}")
         else:
@@ -76,4 +82,4 @@ def is_prompt_enabled(prompt_name: str) -> bool:
         True if the prompt is enabled, False otherwise
     """
     config = load_prompt_config()
-    return prompt_name in config.get("enabled_prompts", [])
+    return prompt_name in config.enabled_prompts
