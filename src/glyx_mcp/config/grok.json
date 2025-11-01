@@ -15,7 +15,7 @@
         "description": "Use Grok 4 Fast model via OpenRouter"
       },
       "prompt": {
-        "flag": "-p",
+        "flag": "",
         "type": "string",
         "default": null,
         "description": "Message to send to Grok via OpenCode"
