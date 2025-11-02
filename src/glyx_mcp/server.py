@@ -16,14 +16,12 @@ from glyx_mcp.tools.use_grok import use_grok
 from glyx_mcp.tools.use_opencode import use_opencode
 from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 
-LOG_FILE = "/app/logs/glyx-mcp.log"
 
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stderr),
-        logging.FileHandler(LOG_FILE, mode='a'),
     ],
     force=True,
 )
@@ -59,19 +57,7 @@ mcp.tool(use_aider)
 mcp.tool(use_grok)
 mcp.tool(use_opencode)
 
-# Register resources
-@mcp.resource("logs://glyx-mcp")
-async def get_logs() -> str:
-    """View the glyx-mcp server logs."""
-    try:
-        with open(LOG_FILE, 'r') as f:
-            lines = f.readlines()
-            # Return last 500 lines
-            return ''.join(lines[-500:])
-    except FileNotFoundError:
-        return "No logs available yet."
-    except Exception as e:
-        return f"Error reading logs: {e}"
+
 
 # Register prompts - hardcoded for simplicity
 @mcp.prompt

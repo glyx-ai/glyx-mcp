@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     default_aider_model: str = "gpt-5"
     default_grok_model: str = "openrouter/x-ai/grok-4-fast"
 
+    # Docker Configuration
+    container_name: str = "glyx-mcp"
+
 
 # Global settings instance
 settings = Settings()

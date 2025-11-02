@@ -211,9 +211,8 @@ Be efficient: only use the agents that are truly necessary.""",
                     logger.info(f"Agent updated: {agent_name}")
                     await self.ctx.info(f"🤖 Agent: {agent_name}")
 
-            # Get final output
-            final_result = await result
-            output = final_result.final_output
+            # Get final output (no await needed - already consumed stream)
+            output = result.final_output
 
             logger.info(f"Orchestration complete. Tool calls: {len(tool_calls)}")
 

@@ -2,7 +2,7 @@ services:
   glyx-mcp:
     build: .
     image: glyx-mcp:latest
-    container_name: glyx-mcp
+    container_name: glyx-mcp-server
     stdin_open: true
     tty: true
     env_file:
@@ -12,6 +12,4 @@ services:
       - ${PROJECT_DIR:-.}:/workspace
       # Mount source code for hot reloading (changes reflect immediately)
       - ./src:/app/src
-      # Mount logs directory for persistent logging
-      - ./logs:/app/logs
     working_dir: /workspace
