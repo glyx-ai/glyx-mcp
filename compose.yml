@@ -5,18 +5,13 @@ services:
     container_name: glyx-mcp
     stdin_open: true
     tty: true
-    environment:
-      # Add your API keys here or use .env file
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      # Langfuse observability
-      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
-      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
-      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
+    env_file:
+      - .env
     volumes:
       # Mount your project directory so agents can edit files
       - ${PROJECT_DIR:-.}:/workspace
       # Mount source code for hot reloading (changes reflect immediately)
       - ./src:/app/src
+      # Mount logs directory for persistent logging
+      - ./logs:/app/logs
     working_dir: /workspace
