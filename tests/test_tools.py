@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastmcp import Context
 
 from glyx_mcp.composable_agent import AgentKey, AgentResult
 from glyx_mcp.tools.use_aider import use_aider

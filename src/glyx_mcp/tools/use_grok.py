@@ -9,8 +9,8 @@ from glyx_mcp.composable_agent import AgentKey, ComposableAgent
 
 async def use_grok(
     prompt: str,
+    ctx: Context,
     model: str = "openrouter/x-ai/grok-4-fast",
-    ctx: Context | None = None,
 ) -> str:
     """Use Grok 4 AI model via OpenCode CLI for general reasoning tasks.
 
@@ -22,8 +22,7 @@ async def use_grok(
     Returns:
         Grok's response to the prompt
     """
-    if ctx:
-        await ctx.info("Starting Grok execution", extra={"model": model})
+    await ctx.info("Starting Grok execution", extra={"model": model})
 
     task_config = {
         "prompt": prompt,
@@ -32,10 +31,9 @@ async def use_grok(
 
     result = await ComposableAgent.from_key(AgentKey.GROK).execute(task_config, timeout=300)
 
-    if ctx:
-        await ctx.info(
-            "Grok execution completed",
-            extra={"exit_code": result.exit_code, "execution_time": result.execution_time},
-        )
+    await ctx.info(
+        "Grok execution completed",
+        extra={"exit_code": result.exit_code, "execution_time": result.execution_time},
+    )
 
     return result.output

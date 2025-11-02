@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__zen__consensus",
+      "WebFetch(domain:opencode.ai)",
+      "mcp__zen__analyze",
+      "Bash(cat:*)",
+      "mcp__context7__resolve-library-id",
+      "WebFetch(domain:docs.mem0.ai)",
+      "mcp__context7__get-library-docs",
+      "Read(//home/parallels/glyx-mcp-memory-composition/src/glyx_mcp/tools/**)",
+      "Read(//home/parallels/glyx-mcp-memory-composition/**)",
+      "Bash(uv run pytest:*)",
+      "Read(//home/parallels/glyx-mcp-orchestration/**)",
+      "mcp__zen__thinkdeep"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "context7",
+    "playwright",
+    "zen",
+    "glyx-mcp"
+  ]
+}

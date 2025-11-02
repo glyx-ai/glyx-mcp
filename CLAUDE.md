@@ -102,10 +102,8 @@ E2E tests require:
 4. Register: `mcp.tool(use_my_agent)` in `server.py`
 5. Test: Add to `tests/test_config_validation.py`
 
-## Common Pitfalls
-
-- **Positional args**: Use `"flag": ""` (empty string) for positional CLI arguments
-- **Boolean flags**: Set `"type": "bool"` - flag included if true, omitted if false
-- **Timeouts**: Default 30s in execute(), tools use 300s
-- **AgentResult vs string**: Tools return `result.output` (string) for MCP compatibility
-- __init__ should contain a docstring only.
+## Misc
+```bash
+# Run client integration tests (important)
+uv run pytest tests/test_client_integration.py -vv -ss 
+```

@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Any
 
+from fastmcp import Context
 from langfuse import get_client
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
 from glyx_mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
+from glyx_mcp.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -48,21 +49,20 @@ class Orchestrator:
     client: AsyncOpenAI
     model: str
     available_agents: list[str]
+    ctx: Context | None
 
-    def __init__(self, api_key: str | None = None, model: str = "gpt-5") -> None:
+    def __init__(self, api_key: str | None = None, model: str | None = None, ctx: Context | None = None) -> None:
         """Initialize orchestrator with OpenAI client.
 
         Args:
-            api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
-            model: Model to use for orchestration planning (default: gpt-5)
+            api_key: OpenAI API key (defaults to settings)
+            model: Model to use for orchestration planning (defaults to settings)
+            ctx: FastMCP context for progress reporting
         """
-        resolved_key = api_key or os.getenv("OPENAI_API_KEY")
-        if not resolved_key:
-            raise ValueError("OPENAI_API_KEY environment variable must be set")
-
-        self.api_key = resolved_key
+        self.api_key = api_key or settings.openai_api_key
         self.client = AsyncOpenAI(api_key=self.api_key)
-        self.model = model
+        self.model = model or settings.default_orchestrator_model
+        self.ctx = ctx
         self.available_agents = self._discover_agents()
 
     def _discover_agents(self) -> list[str]:
@@ -117,7 +117,6 @@ IMPORTANT PARAMETERS:
 - aider requires: "prompt" and "files" (comma-separated file paths)
 - grok requires: "prompt"
 - codex requires: "prompt"
-- All agents support optional "model" parameter
 
 Keep the plan simple and efficient. Only use agents that are truly needed."""
 
@@ -281,13 +280,31 @@ Be concise but thorough. Focus on answering the user's original task."""
 
             try:
                 # Step 1: Create execution plan
+                if self.ctx:
+                    await self.ctx.report_progress(progress=0, total=100, message="Starting orchestration...")
+                    await self.ctx.info(f"Creating execution plan for task: {task}")
+
                 logger.info(f"Creating execution plan for task: {task}")
                 plan = await self._create_plan(task)
                 logger.info(f"Plan created with {len(plan.tasks)} agent tasks")
 
+                if self.ctx:
+                    await self.ctx.report_progress(progress=10, total=100, message=f"Plan created: {len(plan.tasks)} agents")
+                    await self.ctx.info(f"Executing {len(plan.tasks)} agent tasks...")
+
                 # Step 2: Execute each agent task in sequence
                 agent_results: list[dict[str, Any]] = []
                 for i, agent_task in enumerate(plan.tasks, 1):
+                    # Calculate progress: 10-85% range distributed across agents
+                    progress = 10 + int((i - 1) / len(plan.tasks) * 75)
+
+                    if self.ctx:
+                        await self.ctx.report_progress(
+                            progress=progress,
+                            total=100,
+                            message=f"Running {agent_task.agent} ({i}/{len(plan.tasks)})"
+                        )
+
                     logger.info(f"Executing task {i}/{len(plan.tasks)}: {agent_task.agent}")
                     result = await self._execute_agent_task(agent_task)
                     agent_results.append(result)
@@ -295,10 +312,19 @@ Be concise but thorough. Focus on answering the user's original task."""
                     # Log failures but continue
                     if not result["success"]:
                         logger.warning(f"Agent {agent_task.agent} failed: {result.get('error', 'Unknown error')}")
+                        if self.ctx:
+                            await self.ctx.info(f"⚠️ Agent {agent_task.agent} encountered an error")
 
                 # Step 3: Synthesize results
+                if self.ctx:
+                    await self.ctx.report_progress(progress=85, total=100, message="Synthesizing results...")
+
                 logger.info("Synthesizing results")
                 synthesis = await self._synthesize_results(task, plan, agent_results)
+
+                if self.ctx:
+                    await self.ctx.report_progress(progress=100, total=100, message="Orchestration complete")
+                    await self.ctx.info("✓ Orchestration completed successfully")
 
                 # Check if overall orchestration succeeded
                 all_success = all(r["success"] for r in agent_results)
