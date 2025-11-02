@@ -5,18 +5,15 @@ from __future__ import annotations
 import logging
 
 from agents import Agent, Runner, function_tool
+from agents.mcp import MCPServerStdio
 from fastmcp import Context
 from langfuse import get_client
-from mem0 import MemoryClient
 from pydantic import BaseModel, Field
 
 from glyx_mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
 from glyx_mcp.settings import settings
 
 logger = logging.getLogger(__name__)
-
-# Initialize Mem0 client
-mem0_client = MemoryClient(api_key=settings.mem0_api_key) if settings.mem0_api_key else None
 
 
 class OrchestratorResult(BaseModel):
@@ -128,50 +125,12 @@ async def use_opencode_agent(prompt: str) -> str:
     return result.output
 
 
-@function_tool
-async def search_memory(query: str, user_id: str = "default_user", limit: int = 5) -> str:
-    """Search past conversations and project context from memory.
-
-    Args:
-        query: Search query to find relevant architecture, patterns, decisions
-        user_id: User identifier for memory segmentation
-        limit: Maximum number of memories to return
-
-    Returns:
-        Relevant memories from past conversations
-    """
-    if not mem0_client:
-        return "Memory feature not available"
-
-    logger.info(f"Orchestrator searching memory: query={query[:100]}")
-    memories = mem0_client.search(query=query, user_id=user_id, limit=limit)
-    return str(memories)
-
-
-@function_tool
-async def save_memory(text: str, user_id: str = "default_user") -> str:
-    """Save important project information to memory.
-
-    Args:
-        text: Information to store (architecture, patterns, decisions, file locations)
-        user_id: User identifier for memory segmentation
-
-    Returns:
-        Confirmation of memory storage
-    """
-    if not mem0_client:
-        return "Memory feature not available"
-
-    logger.info(f"Orchestrator saving to memory: {text[:100]}")
-    result = mem0_client.add(messages=text, user_id=user_id)
-    return f"Memory saved: {result}"
-
-
 class Orchestrator:
     """Orchestrates multiple AI agents using OpenAI Agents SDK."""
 
     ctx: Context
     agent: Agent
+    mcp_server: MCPServerStdio
 
     def __init__(self, ctx: Context, model: str | None = None) -> None:
         """Initialize orchestrator with OpenAI Agents SDK.
@@ -183,9 +142,16 @@ class Orchestrator:
         self.ctx = ctx
         orchestrator_model = model or settings.default_orchestrator_model
 
-        # Define the orchestrator agent with all available tools
+        # Create and connect to MCP server for memory tools
+        logger.info("Connecting to glyx-mcp server for memory tools...")
+        self.mcp_server = MCPServerStdio(command="uv", args=["run", "glyx-mcp"])
+        self.mcp_server.connect()
+        logger.info("Connected to glyx-mcp MCP server")
+
+        # Define the orchestrator agent with all available tools and MCP server access
         self.agent = Agent(
             name="Orchestrator",
+            mcp_servers=[self.mcp_server],  # Connect to our own MCP server for memory tools
             instructions="""You are a coding-focused AI orchestrator that coordinates specialized agents to accomplish software engineering tasks while maintaining deep project memory.
 
 CORE MISSION:
@@ -200,7 +166,95 @@ AVAILABLE CODING AGENTS:
 
 MEMORY SYSTEM (CRITICAL):
 - search_memory: Query project memory before every task - find relevant architecture, patterns, decisions, file locations
-- save_memory: Persist ALL important technical information for future reference
+- save_memory: Rich memory storage with full metadata and context
+
+save_memory STRUCTURE:
+```python
+save_memory(
+    messages: str | list[dict[str, str]],  # Content or conversation messages
+    agent_id: str | None = None,           # "orchestrator", "aider", "grok", "codex", "claude"
+    user_id: str = "default_user",         # User identifier
+    metadata: dict[str, Any] | None = None,  # {"directory_name": "...", "category": "...", "user_intention": "..."}
+    run_id: str | None = None,             # Unique run identifier
+    timestamp: int | None = None,          # Unix timestamp
+)
+```
+
+METADATA CATEGORIES (use in metadata["category"]):
+- "architecture": System design, component structure, design patterns
+- "integrations": How systems connect, MCP tools, SDK integrations, APIs
+- "code_style_guidelines": Project conventions, coding style, naming patterns
+- "project_id": Project identity, purpose, core mission
+- "observability": Logging, tracing, monitoring, debugging approaches
+- "product": Product features, user-facing functionality
+- "key_concept": Important concepts, patterns, paradigms
+
+FEW-SHOT EXAMPLES:
+
+Example 1 - Architecture Decision:
+```python
+save_memory(
+    messages="Project uses OpenAI Agents SDK for orchestration with Runner.run_streamed() for parallel agent execution",
+    agent_id="orchestrator",
+    metadata={
+        "directory_name": "glyx-mcp",
+        "category": "architecture",
+        "user_intention": "understand_architecture"
+    }
+)
+```
+
+Example 2 - Integration Pattern:
+```python
+save_memory(
+    messages="Mem0 memory integration uses enable_graph=True for all operations to create entity relationships. Custom categories configured: architecture, integrations, code_style_guidelines, project_id, observability, product, key_concept",
+    agent_id="orchestrator",
+    metadata={
+        "directory_name": "glyx-mcp",
+        "category": "integrations",
+        "user_intention": "add_feature"
+    }
+)
+```
+
+Example 3 - Code Style:
+```python
+save_memory(
+    messages="Project uses Pydantic models for all configs and structured data. Strict mypy mode enabled. All agent execution is async with asyncio.",
+    agent_id="aider",
+    metadata={
+        "directory_name": "glyx-mcp",
+        "category": "code_style_guidelines",
+        "user_intention": "refactor"
+    }
+)
+```
+
+Example 4 - File Location:
+```python
+save_memory(
+    messages="Agent configurations stored in src/glyx_mcp/config/*.json. Each agent has AgentConfig with command, args structure. ComposableAgent in composable_agent.py handles execution.",
+    agent_id="orchestrator",
+    metadata={
+        "directory_name": "glyx-mcp",
+        "category": "architecture",
+        "user_intention": "understand_codebase"
+    }
+)
+```
+
+Example 5 - Observability:
+```python
+save_memory(
+    messages="Langfuse instrumentation enabled for all orchestrator executions. OpenAI Agents instrumented via OpenAIAgentsInstrumentor(). Logs use Python logging with DEBUG level.",
+    agent_id="orchestrator",
+    metadata={
+        "directory_name": "glyx-mcp",
+        "category": "observability",
+        "user_intention": "debug_issue"
+    }
+)
+```
 
 MEMORY PRIORITIES (What to save/search):
 1. **Architecture & Design**: Component structure, module organization, design patterns used
@@ -272,7 +326,6 @@ Your goal: Build software with an AI that REMEMBERS and maintains architectural 
                 use_claude_agent,
                 use_opencode_agent,
                 search_memory,
-                save_memory,
             ],
         )
 
@@ -286,51 +339,56 @@ Your goal: Build software with an AI that REMEMBERS and maintains architectural 
             OrchestratorResult with final output
         """
         langfuse = get_client()
-        with langfuse.start_as_current_span(name="orchestrator_execution") as span:
-            span.update(input={"task": task})
+        try:
+            with langfuse.start_as_current_span(name="orchestrator_execution") as span:
+                span.update(input={"task": task})
 
-            await self.ctx.report_progress(progress=0, total=100, message="Starting orchestration...")
-            await self.ctx.info(f"🎯 Orchestrating task: {task}")
+                await self.ctx.report_progress(progress=0, total=100, message="Starting orchestration...")
+                await self.ctx.info(f"🎯 Orchestrating task: {task}")
 
-            logger.info(f"Orchestrating task: {task}")
+                logger.info(f"Orchestrating task: {task}")
 
-            # Track execution details for rich output
-            tool_calls = []
-            agent_updates = []
+                # Track execution details for rich output
+                tool_calls = []
+                agent_updates = []
 
-            # Run the orchestrator agent with streaming
-            logger.info("Starting streaming orchestration")
-            result = Runner.run_streamed(
-                self.agent,
-                input=task,
-            )
+                # Run the orchestrator agent with streaming
+                logger.info("Starting streaming orchestration")
+                result = Runner.run_streamed(
+                    self.agent,
+                    input=task,
+                )
 
-            # Process stream events
-            async for event in result.stream_events():
-                if event.type == "run_item_stream_event":
-                    item = event.item
-                    if item.type == "tool_call_item":
-                        tool_name = item.raw_item.name
-                        tool_calls.append(tool_name)
-                        logger.info(f"Tool called: {tool_name}")
-                        await self.ctx.info(f"🔧 Calling agent: {tool_name}")
-                    elif item.type == "message_output_item":
-                        logger.info(f"Message output received")
+                # Process stream events
+                async for event in result.stream_events():
+                    if event.type == "run_item_stream_event":
+                        item = event.item
+                        if item.type == "tool_call_item":
+                            tool_name = item.raw_item.name
+                            tool_calls.append(tool_name)
+                            logger.info(f"Tool called: {tool_name}")
+                            await self.ctx.info(f"🔧 Calling agent: {tool_name}")
+                        elif item.type == "message_output_item":
+                            logger.info(f"Message output received")
 
-                elif event.type == "agent_updated_stream_event":
-                    agent_name = event.new_agent.name
-                    agent_updates.append(agent_name)
-                    logger.info(f"Agent updated: {agent_name}")
-                    await self.ctx.info(f"🤖 Agent: {agent_name}")
+                    elif event.type == "agent_updated_stream_event":
+                        agent_name = event.new_agent.name
+                        agent_updates.append(agent_name)
+                        logger.info(f"Agent updated: {agent_name}")
+                        await self.ctx.info(f"🤖 Agent: {agent_name}")
 
-            # Get final output (no await needed - already consumed stream)
-            output = result.final_output
+                # Get final output (no await needed - already consumed stream)
+                output = result.final_output
 
-            logger.info(f"Orchestration complete. Tool calls: {len(tool_calls)}")
+                logger.info(f"Orchestration complete. Tool calls: {len(tool_calls)}")
 
-            await self.ctx.report_progress(progress=100, total=100, message="Orchestration complete")
-            await self.ctx.info("✅ Orchestration completed successfully")
+                await self.ctx.report_progress(progress=100, total=100, message="Orchestration complete")
+                await self.ctx.info("✅ Orchestration completed successfully")
 
-            span.update(output={"output": output, "tool_calls": tool_calls})
+                span.update(output={"output": output, "tool_calls": tool_calls})
 
-            return OrchestratorResult(success=True, output=output, tool_calls=tool_calls, error=None)
+                return OrchestratorResult(success=True, output=output, tool_calls=tool_calls, error=None)
+        finally:
+            # Cleanup MCP server connection
+            logger.info("Cleaning up MCP server connection")
+            self.mcp_server.cleanup()

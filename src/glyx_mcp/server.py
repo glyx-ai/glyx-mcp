@@ -13,7 +13,12 @@ from glyx_mcp.orchestration.orchestrator import Orchestrator
 from glyx_mcp.settings import settings
 from glyx_mcp.tools.use_aider import use_aider
 from glyx_mcp.tools.use_grok import use_grok
-from glyx_mcp.tools.use_memory import save_memory, search_memory
+from glyx_mcp.tools.use_memory import (
+    delete_all_memories,
+    save_memory,
+    search_memory,
+    setup_custom_categories,
+)
 from glyx_mcp.tools.use_opencode import use_opencode
 from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 
@@ -59,6 +64,8 @@ mcp.tool(use_grok)
 mcp.tool(use_opencode)
 mcp.tool(search_memory)
 mcp.tool(save_memory)
+mcp.tool(delete_all_memories)
+mcp.tool(setup_custom_categories)
 
 
 
