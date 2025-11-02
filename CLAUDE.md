@@ -107,3 +107,5 @@ E2E tests require:
 # Run client integration tests (important)
 uv run pytest tests/test_client_integration.py -vv -ss 
 ```
+- To run logs, execute docker logs glyx-mcp-server
+- Kill all Glyx MCP containers: docker rm -f $(docker ps -aq --filter "name=glyx-mcp")

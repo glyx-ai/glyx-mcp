@@ -10,7 +10,7 @@ from glyx_mcp.composable_agent import AgentKey, ComposableAgent
 async def use_grok(
     prompt: str,
     ctx: Context,
-    model: str = "openrouter/x-ai/grok-4-fast",
+    model: str = "openrouter/x-ai/grok-code-fast-1",
 ) -> str:
     """Use Grok 4 AI model via OpenCode CLI for general reasoning tasks.
 

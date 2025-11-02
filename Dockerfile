@@ -20,7 +20,7 @@ COPY README.md ./
 COPY src/ ./src/
 
 # Install Python dependencies
-RUN uv pip install --system -e .
+RUN uv pip install --system -e ".[dev]"
 
 # Install Aider using the official installer
 RUN python3 -m pip install --break-system-packages aider-install && \

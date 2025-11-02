@@ -11,8 +11,8 @@
       "model": {
         "flag": "--model",
         "type": "string",
-        "default": "openrouter/x-ai/grok-4-fast",
-        "description": "Use Grok 4 Fast model via OpenRouter"
+        "default": "openrouter/x-ai/grok-code-fast-1",
+        "description": "Use Grok Code Fast model via OpenRouter"
       },
       "prompt": {
         "flag": "",

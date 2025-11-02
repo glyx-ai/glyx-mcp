@@ -146,6 +146,7 @@ class ComposableAgent:
     async def execute(self, task_config: dict[str, Any], timeout: int = 30) -> AgentResult:
         """Parse args and execute command, returning structured result."""
         start_time = time()
+        logger.info(f"[AGENT EXECUTE] Starting execution for {self.config.agent_key}")
         cmd = [self.config.command]
 
         # Add all arguments with values from task_config or defaults
@@ -166,92 +167,36 @@ class ComposableAgent:
                     else:
                         cmd.extend([flag, str(value)])
 
-        logger.info(
-            f"Executing agent '{self.config.agent_key}'",
-            extra={
-                "agent": self.config.agent_key,
-                "command": " ".join(cmd),
-                "timeout": timeout,
-            }
+        logger.info(f"[AGENT CMD] Executing: {' '.join(cmd)}")
+
+        subprocess_start = time()
+        logger.info(f"[AGENT SUBPROCESS] Creating subprocess...")
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.DEVNULL,  # Close stdin to prevent hanging
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        logger.info(f"[AGENT SUBPROCESS] Created in {time() - subprocess_start:.2f}s, waiting for output...")
+
+        communicate_start = time()
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=timeout
+        )
+        logger.info(f"[AGENT COMMUNICATE] Done in {time() - communicate_start:.2f}s")
+
+        execution_time = time() - start_time
+
+        result = AgentResult(
+            stdout=stdout.decode() if stdout else "",
+            stderr=stderr.decode() if stderr else "",
+            exit_code=process.returncode if process.returncode is not None else -1,
+            timed_out=False,
+            execution_time=execution_time,
+            command=cmd
         )
 
-        # Start Langfuse span for tracing
-        langfuse = get_client()
-        with langfuse.start_as_current_span(name=f"agent_{self.config.agent_key}") as span:
-            span.update(
-                input={
-                    "agent": self.config.agent_key,
-                    "command": " ".join(cmd),
-                    "task_config": task_config,
-                    "timeout": timeout,
-                }
-            )
+        logger.info(f"[AGENT RESULT] Completed in {execution_time:.2f}s (exit={result.exit_code}, stdout={len(result.stdout)} bytes, stderr={len(result.stderr)} bytes)")
 
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=timeout
-                )
-
-                execution_time = time() - start_time
-
-                result = AgentResult(
-                    stdout=stdout.decode() if stdout else "",
-                    stderr=stderr.decode() if stderr else "",
-                    exit_code=process.returncode if process.returncode is not None else -1,
-                    timed_out=False,
-                    execution_time=execution_time,
-                    command=cmd
-                )
-
-                logger.info(
-                    f"Agent '{self.config.agent_key}' completed",
-                    extra={
-                        "agent": self.config.agent_key,
-                        "exit_code": result.exit_code,
-                        "execution_time": result.execution_time,
-                        "success": result.success
-                    }
-                )
-
-                # Update span with output
-                span.update(
-                    output={
-                        "exit_code": result.exit_code,
-                        "execution_time": result.execution_time,
-                        "success": result.success,
-                        "stdout_length": len(result.stdout),
-                        "stderr_length": len(result.stderr),
-                    }
-                )
-
-                return result
-
-            except asyncio.TimeoutError:
-                execution_time = time() - start_time
-                process.kill()
-                await process.wait()
-
-                span.update(
-                    output={"error": "timeout", "execution_time": execution_time}
-                )
-
-                raise AgentTimeoutError(
-                    f"Agent '{self.config.agent_key}' timed out after {timeout}s"
-                )
-            except Exception as e:
-                execution_time = time() - start_time
-
-                span.update(
-                    output={"error": str(e), "execution_time": execution_time}
-                )
-
-                raise AgentExecutionError(
-                    f"Agent '{self.config.agent_key}' execution failed: {e}"
-                ) from e
+        return result

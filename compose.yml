@@ -1,5 +1,7 @@
 services:
   glyx-mcp:
+    labels:
+      - "glyx-mcp"
     build: .
     image: glyx-mcp:latest
     container_name: glyx-mcp-server
@@ -12,4 +14,6 @@ services:
       - ${PROJECT_DIR:-.}:/workspace
       # Mount source code for hot reloading (changes reflect immediately)
       - ./src:/app/src
+      # Mount logs directory
+      - ./logs:/app/logs
     working_dir: /workspace

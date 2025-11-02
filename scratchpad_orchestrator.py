@@ -1,79 +1,218 @@
-#!/usr/bin/env python3
-"""Scratchpad for testing orchestrator with real FastMCP context."""
+"""Command building functionality for the composable agent system."""
+
+from glyx.tools.load_glyx_configuration import load_glyx_config_impl
+
+
+def get_orchestration_prompt() -> str:
+    """Generate the orchestration prompt with current glyx.json configuration injected."""
+    config = load_glyx_config_impl()
+    dirs = config["additionalWorkingDirectories"]
+    formatted_dirs = "\n".join(f"- {d}" for d in dirs)
+    config_section = f"additionalWorkingDirectories:\n{formatted_dirs}"
+
+    return BASE_ORCHESTRATION_PROMPT_TEMPLATE.replace(
+        "Current `glyx.json` configuration:\n\n", f"Current `glyx.json` configuration:\n{config_section}\n"
+    )
+
+
+BASE_ORCHESTRATION_PROMPT_TEMPLATE = """
+GLYX Orchestrator — Enhanced Multi-Agent Conductor
+
+<ROLE>
+You are the GLYX Orchestrator, a specialized AI that manages software development tasks by decomposing user requests, delegating to expert agents and tools, verifying outputs, and integrating results. You NEVER write code yourself—instead, you coordinate others to do so. Focus on parallel execution where possible to maximize efficiency.
+</ROLE>
+
+<CORE_PRINCIPLES>
+- Decompose tasks into small, verifiable units (≤5 minutes each).
+- Delegate liberally: prefer parallelized agents/tools over manual work.
+- Verify everything: use tests, linters, and checks before integration.
+- Parallelize independent tasks; sequence only when clear dependencies exist.
+- Escalate blockers immediately with diagnosis and proposals.
+</CORE_PRINCIPLES>
+
+<CONFIGURATION>
+Load and inject `glyx.json` dynamically using `load_glyx_config`. This includes additional working directories for multi-project management.
+
+Current configuration:
+additionalWorkingDirectories:
+- ~/bldrbase/
+</CONFIGURATION>
+
+<CODING_AGENTS>
+- Claude 4 Opus (Deep Thinker): For architecture, debugging, security, reviews.
+- Gemini (Speed Drafter): For tests, docs, boilerplate.
+- Aider (Contextual Coder): For small edits, quick fixes.
+- Codex (Generalist Coder): For implementations, balanced tasks.
+- Grok 4 (Researcher): For complex analysis, cutting-edge tasks -- similar to Claude 4 Opus and GPT-5.
+- GPT-5 (Deep Researcher): For complex analysis, cutting-edge tasks -- similar to Claude 4 Opus and Grok-4.
+</CODING_AGENTS>
+
+<OPERATING_PROCEDURE>
+1. **Understand**: Analyze request, identify goals/sub-goals. Gather context via tools/agents if needed.
+2. **Decompose**: Break into micro-tasks with dependencies noted.
+3. **Route & Delegate**: Use decision matrix; issue precise instructions.
+4. **Verify**: Run checks (e.g., `make test`, linters); re-delegate if failed.
+5. **Integrate**: Apply verified changes to filesystem.
+6. **Report**: Summarize changes, status, next steps.
+</OPERATING_PROCEDURE>
+
+<DECISION_MATRIX>
+- Simple edit: Aider.
+- Quick generation: Choose between Gemini and Grok.
+- Feature implementation: Consensus architecture plan, subtask breakdown, and delegation to the appropriate agents.
+- Complex analysis or research: Claude 4 Opus, GPT-5, and Grok-4.
+If >1 task: Parallelize non-dependent ones.
+</DECISION_MATRIX>
+
+<ERROR_RECOVERY>
+- **Level 1**: Retry with clarified prompt if you originally misunderstood. Do not waste time retrying if the error is not due to misunderstanding.
+- **Level 2**: Escalate to human with goal, attempts, error details, proposals.
+</ERROR_RECOVERY>
+
+<IMAGE_HANDLING>
+Enumerate images, extract details, tie to goal. Clarify minimally; assume when possible.
+</IMAGE_HANDLING>
+
+<SESSION_MEMORY>
+Track modifications, patterns, agent performance, user preferences. You can access memories via the `session_memory` MCP server -- which
+you should use to store and retrieve relevant information as needed.
+</SESSION_MEMORY>
+""".strip()
+
+
+
+"""
+Enhanced Unified Coding Agent with MCP Server Integration
+Combines traditional coding agents with MCP server capabilities
+"""
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import sys
+from pathlib import Path
 
-from fastmcp import FastMCP
-from fastmcp.server.context import Context
-from fastmcp.utilities.logging import get_logger
-
-from glyx_mcp.orchestration.orchestrator import Orchestrator
-from glyx_mcp.settings import settings
-
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)],
-    force=True,
+from agents import (
+    Agent,
+    MessageOutputItem,
+    ReasoningItem,
+    RunConfig,
+    Runner,
+    SQLiteSession,
+    Session,
+    Tool,
+    ToolCallItem,
+    ToolCallOutputItem,
 )
+from agents.extensions.models.litellm_model import LitellmModel
+from agents.mcp import MCPServer
+
+from glyx.adapters.mem0_milvus_session import Mem0MilvusSession
+from glyx.config.prompts import get_orchestration_prompt
+from glyx.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Configure FastMCP client logging
-to_client_logger = get_logger(name="fastmcp.server.context.to_client")
-to_client_logger.setLevel(level=logging.DEBUG)
 
+class GlyxOrchestrator:
+    """Unified orchestrator that owns agents, MCP servers, and session."""
 
-async def main() -> None:
-    """Run orchestrator using FastMCP's context infrastructure."""
-    logger.info("=" * 80)
-    logger.info("ORCHESTRATOR TEST - WITH REAL FASTMCP CONTEXT")
-    logger.info("=" * 80)
+    def __init__(
+        self,
+        agent_name: str,
+        model: str,
+        tools: list[Tool] | None = None,
+        mcp_servers: list[MCPServer] | None = None,
+        session_id: str = "default",
+    ):
+        if tools is None:
+            tools = []
+        self.agent_name = agent_name
+        self.model = model
+        self.tools = tools
+        self.mcp_servers = mcp_servers
+        self.agent = None
+        self.session = None
+        self.session_id = session_id
 
-    logger.info("Initializing orchestrator without context (standalone mode)...")
-    orchestrator = Orchestrator(ctx=None)
+        logger.info("Configured MCP servers: %s", [s.name for s in self.mcp_servers or []])
 
-    # Task that uses multiple agents
-    task = "Explain what prime numbers are and write a Python function to check if a number is prime"
+    async def run_prompt_streamed_items(self, text: str):
+        """Run a prompt through the agent and stream only the new items.
 
-    logger.info(f"Task: {task}")
-    logger.info("=" * 80)
-    logger.info("STARTING ORCHESTRATION")
-    logger.info("=" * 80)
+        Returns an async generator that yields only the new items (messages, tool calls, etc).
 
-    # Run orchestration
-    result = await orchestrator.orchestrate(task)
+        Example usage:
+            async for item in orchestrator.run_prompt_streamed_items("Hello"):
+                print(item)
+        """
+        # Initialize agent and session if not already initialized
+        if not self.agent:
+            # Use LiteLLM model for flexibility across providers
+            litellm_model = LitellmModel(
+                model=self.model,
+                api_key=settings.openrouter_api_key,
+                base_url=settings.OPENROUTER_BASE_URL,
+            )
 
-    # Display results
-    logger.info("=" * 80)
-    logger.info("ORCHESTRATION COMPLETE")
-    logger.info("=" * 80)
+            self.agent = Agent(
+                name=self.agent_name,
+                model=litellm_model,
+                tools=self.tools,
+                mcp_servers=self.mcp_servers,
+                instructions=get_orchestration_prompt(),
+            )
 
-    logger.info(f"Success: {result.success}")
+            # Connect MCP servers with error handling
+            connected_servers = []
+            for server in self.agent.mcp_servers:
+                try:
+                    await server.connect()
+                    logger.info(f"Connected MCP server: {server.name}")
+                    connected_servers.append(server.name)
+                except Exception as e:
+                    logger.exception(f"Failed to connect MCP server {server.name}: {e}")
 
-    if result.plan:
-        logger.info(f"Plan Reasoning: {result.plan.reasoning}")
-        logger.info(f"Tasks Executed ({len(result.plan.tasks)}):")
-        for i, task_item in enumerate(result.plan.tasks, 1):
-            logger.info(f"  {i}. {task_item.agent}: {task_item.task_description}")
+            if connected_servers:
+                logger.info(f"Successfully connected to MCP servers: {connected_servers}")
+            else:
+                logger.warning("No MCP servers connected successfully")
 
-    logger.info(f"Agent Results ({len(result.agent_results)}):")
-    for i, agent_result in enumerate(result.agent_results, 1):
-        success_icon = "✓" if agent_result["success"] else "✗"
-        logger.info(f"  {success_icon} Agent {i}: {agent_result.get('agent', 'unknown')}")
-        if not agent_result["success"]:
-            logger.warning(f"    Error: {agent_result.get('error', 'Unknown error')}")
+            # Use Mem0MilvusSession with Zilliz Cloud or localhost
+            db_path = settings.zilliz_uri or "localhost:19530"
+            token = settings.zilliz_api_key
+            self.session = Mem0MilvusSession(
+                session_id=self.session_id,
+                db_path=db_path,
+                token=token
+            )
+            logger.info(f"Session created with Mem0/Milvus backend for session_id: {self.session_id}")
 
-    logger.info(f"Final Synthesis: {result.synthesis}")
+        result = Runner.run_streamed(
+            starting_agent=self.agent,
+            input=text,
+            session=self.session,
+            run_config=RunConfig(model_provider=settings.get_model_provider()),
+            max_turns=settings.orchestrator_max_turns,
+        )
 
-    if result.error:
-        logger.error(f"Error: {result.error}")
+        async for event in result.stream_events():
+            if event.type == "run_item_stream_event":
+                item = event.item
 
+                # Yield only the specific item types we support
+                if isinstance(item, MessageOutputItem | ToolCallItem | ToolCallOutputItem | ReasoningItem):
+                    yield item
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    async def clear_session(self) -> None:
+        if self.session:
+            await self.session.clear_session()
+            logger.info("Session cleared.")
+
+    async def cleanup(self) -> None:
+        if self.agent and self.agent.mcp_servers:
+            for server in self.agent.mcp_servers:
+                try:
+                    await server.cleanup()
+                    logger.info(f"Cleaned up MCP server: {server.name}")
+                except Exception as e:
+                    logger.warning(f"Error cleaning up MCP server {server.name}: {e}")

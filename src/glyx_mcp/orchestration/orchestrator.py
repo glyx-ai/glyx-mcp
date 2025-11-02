@@ -46,19 +46,32 @@ async def use_aider_agent(prompt: str, files: str, model: str = "gpt-5") -> str:
 
 
 @function_tool
-async def use_grok_agent(prompt: str, model: str = "openrouter/x-ai/grok-4-fast") -> str:
+async def use_grok_agent(prompt: str, model: str = "openrouter/x-ai/grok-code-fast-1") -> str:
     """Execute Grok for general reasoning and analysis.
 
     Args:
         prompt: The question or task for Grok
-        model: Model to use (default: grok-4-fast)
+        model: Model to use (default: grok-code-fast-1)
 
     Returns:
         Result from Grok execution
     """
-    logger.info(f"Executing Grok agent: prompt={prompt[:100]}")
+    import time
+    start = time.time()
+    logger.info(f"[GROK START] Executing Grok agent: prompt={prompt[:100]}")
+
+    agent_load_start = time.time()
     agent = ComposableAgent.from_key(AgentKey.GROK)
-    result: AgentResult = await agent.execute({"prompt": prompt, "model": model}, timeout=300)
+    logger.info(f"[GROK AGENT LOADED] Took {time.time() - agent_load_start:.2f}s")
+
+    execute_start = time.time()
+    logger.info(f"[GROK EXECUTE START] Calling agent.execute with timeout=60")
+    result: AgentResult = await agent.execute({"prompt": prompt, "model": model}, timeout=60)
+    logger.info(f"[GROK EXECUTE DONE] Took {time.time() - execute_start:.2f}s, exit_code={result.exit_code}")
+
+    output_len = len(result.output)
+    logger.info(f"[GROK COMPLETE] Total time: {time.time() - start:.2f}s, output length: {output_len}")
+
     return result.output
 
 
@@ -198,7 +211,7 @@ Be efficient: only use the agents that are truly necessary.""",
                 if event.type == "run_item_stream_event":
                     item = event.item
                     if item.type == "tool_call_item":
-                        tool_name = item.name
+                        tool_name = item.raw_item.name
                         tool_calls.append(tool_name)
                         logger.info(f"Tool called: {tool_name}")
                         await self.ctx.info(f"🔧 Calling agent: {tool_name}")
