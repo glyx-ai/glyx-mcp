@@ -13,6 +13,7 @@ from glyx_mcp.orchestration.orchestrator import Orchestrator
 from glyx_mcp.settings import settings
 from glyx_mcp.tools.use_aider import use_aider
 from glyx_mcp.tools.use_grok import use_grok
+from glyx_mcp.tools.use_memory import save_memory, search_memory
 from glyx_mcp.tools.use_opencode import use_opencode
 from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 
@@ -56,6 +57,8 @@ logger.info("Initializing MCP tools...")
 mcp.tool(use_aider)
 mcp.tool(use_grok)
 mcp.tool(use_opencode)
+mcp.tool(search_memory)
+mcp.tool(save_memory)
 
 
 

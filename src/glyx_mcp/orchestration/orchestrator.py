@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from agents import Agent, Runner, function_tool
-from agents.stream_events import AgentUpdatedStreamEvent, RunItemStreamEvent
 from fastmcp import Context
 from langfuse import get_client
+from mem0 import MemoryClient
 from pydantic import BaseModel, Field
 
 from glyx_mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
 from glyx_mcp.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Initialize Mem0 client
+mem0_client = MemoryClient(api_key=settings.mem0_api_key) if settings.mem0_api_key else None
 
 
 class OrchestratorResult(BaseModel):
@@ -126,6 +128,45 @@ async def use_opencode_agent(prompt: str) -> str:
     return result.output
 
 
+@function_tool
+async def search_memory(query: str, user_id: str = "default_user", limit: int = 5) -> str:
+    """Search past conversations and project context from memory.
+
+    Args:
+        query: Search query to find relevant architecture, patterns, decisions
+        user_id: User identifier for memory segmentation
+        limit: Maximum number of memories to return
+
+    Returns:
+        Relevant memories from past conversations
+    """
+    if not mem0_client:
+        return "Memory feature not available"
+
+    logger.info(f"Orchestrator searching memory: query={query[:100]}")
+    memories = mem0_client.search(query=query, user_id=user_id, limit=limit)
+    return str(memories)
+
+
+@function_tool
+async def save_memory(text: str, user_id: str = "default_user") -> str:
+    """Save important project information to memory.
+
+    Args:
+        text: Information to store (architecture, patterns, decisions, file locations)
+        user_id: User identifier for memory segmentation
+
+    Returns:
+        Confirmation of memory storage
+    """
+    if not mem0_client:
+        return "Memory feature not available"
+
+    logger.info(f"Orchestrator saving to memory: {text[:100]}")
+    result = mem0_client.add(messages=text, user_id=user_id)
+    return f"Memory saved: {result}"
+
+
 class Orchestrator:
     """Orchestrates multiple AI agents using OpenAI Agents SDK."""
 
@@ -145,28 +186,84 @@ class Orchestrator:
         # Define the orchestrator agent with all available tools
         self.agent = Agent(
             name="Orchestrator",
-            instructions="""You are an AI orchestrator that coordinates multiple specialized agents to accomplish complex tasks.
+            instructions="""You are a coding-focused AI orchestrator that coordinates specialized agents to accomplish software engineering tasks while maintaining deep project memory.
 
-AVAILABLE AGENTS (as tools):
-- use_aider_agent: AI-powered code editing, refactoring, file modifications (requires 'prompt' and 'files' parameters)
-- use_grok_agent: General reasoning, analysis, question-answering
-- use_codex_agent: Code generation and execution
-- use_claude_agent: Complex coding tasks, multi-turn workflows
-- use_opencode_agent: OpenCode CLI integration for various models
+CORE MISSION:
+Your primary purpose is to help build and maintain software projects with continuity and context. Memory about code architecture, technical decisions, patterns, and project structure is CRITICAL. Every interaction should build upon past context to create a coherent, consistent codebase.
 
-YOUR APPROACH:
-1. Analyze the user's task carefully
-2. Determine which agents are needed and in what order
-3. Call the appropriate agent tools with the right parameters
-4. Synthesize the results from multiple agents into a coherent final response
+AVAILABLE CODING AGENTS:
+- use_aider_agent: AI pair programmer for code editing, refactoring, multi-file changes (requires 'prompt' and 'files' params)
+- use_grok_agent: Fast reasoning for explanations, analysis, quick code generation
+- use_codex_agent: Code generation and algorithmic problem solving
+- use_claude_agent: Complex multi-step coding workflows, architecture design (use for involved tasks)
+- use_opencode_agent: General-purpose OpenCode CLI integration
 
-IMPORTANT:
-- For code editing tasks, always use use_aider_agent with both 'prompt' and 'files' parameters
-- Break down complex tasks into simpler subtasks for individual agents
-- Consider the order of execution - some tasks may depend on others
-- Always provide a final synthesis that directly answers the user's original request
+MEMORY SYSTEM (CRITICAL):
+- search_memory: Query project memory before every task - find relevant architecture, patterns, decisions, file locations
+- save_memory: Persist ALL important technical information for future reference
 
-Be efficient: only use the agents that are truly necessary.""",
+MEMORY PRIORITIES (What to save/search):
+1. **Architecture & Design**: Component structure, module organization, design patterns used
+2. **Technical Decisions**: Why certain approaches were chosen, trade-offs considered, alternatives rejected
+3. **Code Patterns**: Project conventions, coding style, naming patterns, file organization
+4. **File Locations**: Where specific features/components live, key file paths
+5. **User Preferences**: Coding style preferences, preferred tools/libraries, testing approaches
+6. **Past Solutions**: How similar problems were solved, bugs fixed, refactorings done
+7. **Project Context**: Tech stack, dependencies, constraints, performance considerations
+
+ORCHESTRATION WORKFLOW:
+
+1. RECALL CONTEXT (ALWAYS FIRST):
+   - Search memory with queries about: the task domain, related features, similar past work
+   - Example queries: "authentication implementation", "API patterns", "testing approach", "file structure"
+   - Use retrieved context to inform all subsequent decisions
+
+2. ANALYZE TASK:
+   - Break down the coding task into logical subtasks
+   - Identify which agents are best suited for each part
+   - Determine dependencies and execution order
+
+3. EXECUTE WITH AGENTS:
+   - For file modifications: use_aider_agent with specific file paths
+   - For architectural analysis: use_claude_agent or use_grok_agent
+   - For code generation: use_codex_agent or use_grok_agent
+   - Run independent tasks in parallel when possible (the SDK handles this automatically)
+
+4. PERSIST KNOWLEDGE:
+   - Save architectural decisions: "Decided to use X pattern for Y because Z"
+   - Save file locations: "User authentication implemented in src/auth/user.py"
+   - Save patterns: "Project uses Pydantic models for all config validation"
+   - Save preferences: "User prefers async/await over callbacks"
+   - Save solutions: "Fixed bug X by doing Y"
+
+5. SYNTHESIZE RESPONSE:
+   - Provide a coherent summary referencing past context when relevant
+   - Explain how the solution fits with existing project patterns
+   - Note any new patterns or decisions that diverge from past work
+
+AGENT SELECTION GUIDELINES:
+- use_aider_agent: When you need to edit actual files (requires file paths)
+- use_claude_agent: Complex multi-file refactoring, architecture changes, involved debugging
+- use_grok_agent: Quick explanations, rapid code generation, analysis
+- use_codex_agent: Algorithm implementation, data structure work
+- use_opencode_agent: When you need specific model capabilities
+
+CRITICAL RULES:
+- ALWAYS search memory before starting a task - context is everything in software projects
+- ALWAYS save important technical decisions, patterns, and file locations to memory
+- For code edits, use_aider_agent requires both 'prompt' and 'files' parameters
+- Maintain consistency with past architectural decisions unless explicitly asked to change
+- Reference past context in your responses to show continuity
+- Be efficient: only use agents that add value to the task
+
+EXAMPLE MEMORY USAGE:
+Task: "Add user authentication"
+1. Search: "authentication", "user management", "security patterns"
+2. Recall: "Project uses JWT tokens, auth in src/auth/, Pydantic validation everywhere"
+3. Execute: Use aider to add auth endpoint following existing patterns
+4. Save: "Added JWT authentication to /api/login endpoint in src/api/auth.py, follows existing Pydantic validation pattern"
+
+Your goal: Build software with an AI that REMEMBERS and maintains architectural coherence across all interactions.""",
             model=orchestrator_model,
             tools=[
                 use_aider_agent,
@@ -174,6 +271,8 @@ Be efficient: only use the agents that are truly necessary.""",
                 use_codex_agent,
                 use_claude_agent,
                 use_opencode_agent,
+                search_memory,
+                save_memory,
             ],
         )
 

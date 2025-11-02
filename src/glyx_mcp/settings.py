@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
     claude_api_key: str | None = None
+    mem0_api_key: str | None = None
 
     # Langfuse Configuration
     langfuse_secret_key: str | None = None
