@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from agents import Agent, Runner, function_tool
+from agents.stream_events import AgentUpdatedStreamEvent, RunItemStreamEvent
 from fastmcp import Context
 from langfuse import get_client
 from pydantic import BaseModel, Field
@@ -21,6 +22,7 @@ class OrchestratorResult(BaseModel):
 
     success: bool = Field(..., description="Whether orchestration succeeded")
     output: str = Field(..., description="Final synthesized response from the orchestrator")
+    tool_calls: list[str] = Field(default_factory=list, description="List of tools/agents called during execution")
     error: str | None = Field(None, description="Error message if orchestration failed")
 
 
@@ -175,28 +177,49 @@ Be efficient: only use the agents that are truly necessary.""",
         with langfuse.start_as_current_span(name="orchestrator_execution") as span:
             span.update(input={"task": task})
 
-            logger.info(f"DEBUG: About to report progress - Starting orchestration")
             await self.ctx.report_progress(progress=0, total=100, message="Starting orchestration...")
-
-            logger.info(f"DEBUG: About to send info message")
-            await self.ctx.info(f"Orchestrating task: {task}")
+            await self.ctx.info(f"🎯 Orchestrating task: {task}")
 
             logger.info(f"Orchestrating task: {task}")
 
-            # Run the orchestrator agent
-            logger.info(f"DEBUG: About to run orchestrator agent")
-            result = await Runner.run(
+            # Track execution details for rich output
+            tool_calls = []
+            agent_updates = []
+
+            # Run the orchestrator agent with streaming
+            logger.info("Starting streaming orchestration")
+            result = Runner.run_streamed(
                 self.agent,
                 input=task,
             )
 
-            output = result.final_output
-            logger.info(f"DEBUG: Got output: {output[:100]}")
+            # Process stream events
+            async for event in result.stream_events():
+                if event.type == "run_item_stream_event":
+                    item = event.item
+                    if item.type == "tool_call_item":
+                        tool_name = item.name
+                        tool_calls.append(tool_name)
+                        logger.info(f"Tool called: {tool_name}")
+                        await self.ctx.info(f"🔧 Calling agent: {tool_name}")
+                    elif item.type == "message_output_item":
+                        logger.info(f"Message output received")
+
+                elif event.type == "agent_updated_stream_event":
+                    agent_name = event.new_agent.name
+                    agent_updates.append(agent_name)
+                    logger.info(f"Agent updated: {agent_name}")
+                    await self.ctx.info(f"🤖 Agent: {agent_name}")
+
+            # Get final output
+            final_result = await result
+            output = final_result.final_output
+
+            logger.info(f"Orchestration complete. Tool calls: {len(tool_calls)}")
 
             await self.ctx.report_progress(progress=100, total=100, message="Orchestration complete")
-            await self.ctx.info("✓ Orchestration completed successfully")
-            await self.ctx.info(f"DEBUG OUTPUT: {output}")
+            await self.ctx.info("✅ Orchestration completed successfully")
 
-            span.update(output={"output": output})
+            span.update(output={"output": output, "tool_calls": tool_calls})
 
-            return OrchestratorResult(success=True, output=output, error=None)
+            return OrchestratorResult(success=True, output=output, tool_calls=tool_calls, error=None)
