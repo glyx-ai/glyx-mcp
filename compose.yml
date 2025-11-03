@@ -18,4 +18,6 @@ services:
       - ./src:/app/src
       # Mount logs directory
       - ./logs:/app/logs
+      # Mount Claude credentials for authentication
+      - ${HOME}/.claude/.credentials.json:/root/.claude/.credentials.json:ro
     working_dir: /app

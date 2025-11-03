@@ -49,25 +49,25 @@ In this case, you should return your final response in this EXACT format:
 I need more information to complete this task.
 
 [ASK_USER_QUESTION]
-{
+{{
   "questions": [
-    {
+    {{
       "question": "<your question ending with ?>",
       "header": "<short label, max 12 chars>",
       "multiSelect": false,
       "options": [
-        {
+        {{
           "label": "<option 1, 1-5 words>",
           "description": "<explanation of this option>"
-        },
-        {
+        }},
+        {{
           "label": "<option 2, 1-5 words>",
           "description": "<explanation of this option>"
-        }
+        }}
       ]
-    }
+    }}
   ]
-}
+}}
 [/ASK_USER_QUESTION]
 ```
 

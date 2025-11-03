@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     unzip \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for faster package management
@@ -33,6 +35,12 @@ RUN python3 -m pip install --break-system-packages aider-install && \
 # Install OpenCode CLI
 RUN curl -fsSL https://opencode.ai/install | bash
 ENV PATH="/root/.opencode/bin:$PATH"
+
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+# Create .claude directory for credentials mounting
+RUN mkdir -p /root/.claude
 
 # Expose MCP server port (if needed for stdio, this is optional)
 # MCP typically uses stdio, but we expose for potential future HTTP transport
