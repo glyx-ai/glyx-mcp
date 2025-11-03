@@ -15,6 +15,7 @@ from langfuse import get_client
 logger = logging.getLogger(__name__)
 
 
+
 # Custom Exceptions
 class AgentError(Exception):
     """Base exception for agent errors."""

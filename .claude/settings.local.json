@@ -12,7 +12,9 @@
       "Read(//home/parallels/glyx-mcp-memory-composition/**)",
       "Bash(uv run pytest:*)",
       "Read(//home/parallels/glyx-mcp-orchestration/**)",
-      "mcp__zen__thinkdeep"
+      "mcp__zen__thinkdeep",
+      "Bash(mcp list-tools:*)",
+      "mcp__glyx-mcp__orchestrate"
     ]
   },
   "enableAllProjectMcpServers": true,

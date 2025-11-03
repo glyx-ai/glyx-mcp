@@ -77,7 +77,7 @@ def setup_custom_categories() -> str:
     return f"Custom categories configured: {result}"
 
 
-def search_memory(query: str, user_id: str = "default_user", limit: int = 5) -> str:
+def search_memory(query: str, user_id: str = "glyx_app_1", limit: int = 5) -> str:
     """Search past conversations and project context from memory.
 
     Use this to recall architecture decisions, code patterns, file locations, and past solutions.
@@ -100,7 +100,7 @@ def search_memory(query: str, user_id: str = "default_user", limit: int = 5) -> 
 def save_memory(
     messages: str | list[dict[str, str]],
     agent_id: str | None = None,
-    user_id: str = "default_user",
+    user_id: str = "glyx_app_1",
     metadata: dict[str, Any] | None = None,
     run_id: str | None = None,
     timestamp: int | None = None,
@@ -149,7 +149,7 @@ def save_memory(
     return f"Memory saved: {result}"
 
 
-def delete_all_memories(user_id: str = "default_user") -> str:
+def delete_all_memories(user_id: str = "glyx_app_1") -> str:
     """Delete ALL memories for a user. Use with caution!
 
     Args:

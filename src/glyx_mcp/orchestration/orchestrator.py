@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from agents import Agent, Runner, function_tool
-from agents.mcp import MCPServerStdio
 from fastmcp import Context
 from langfuse import get_client
 from pydantic import BaseModel, Field
 
 from glyx_mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
 from glyx_mcp.settings import settings
+from glyx_mcp.tools.use_memory import search_memory as search_memory_fn
+from glyx_mcp.tools.use_memory import save_memory as save_memory_fn
 
 logger = logging.getLogger(__name__)
 
@@ -125,12 +127,38 @@ async def use_opencode_agent(prompt: str) -> str:
     return result.output
 
 
+# Memory metadata model for strict schema compliance
+class MemoryMetadata(BaseModel):
+    """Metadata for memory storage."""
+    directory_name: str | None = None
+    category: str | None = None
+    user_intention: str | None = None
+
+
+# Wrap memory functions as function_tools
+@function_tool
+def search_memory(query: str, user_id: str = "glyx_app_1", limit: int = 5) -> str:
+    """Search past conversations and project context from memory."""
+    return search_memory_fn(query=query, user_id=user_id, limit=limit)
+
+
+@function_tool
+def save_memory(
+    messages: str,
+    agent_id: str | None = None,
+    user_id: str = "glyx_app_1",
+    metadata: MemoryMetadata | None = None,
+) -> str:
+    """Save structured memory with metadata and context."""
+    metadata_dict = metadata.model_dump() if metadata else None
+    return save_memory_fn(messages=messages, agent_id=agent_id, user_id=user_id, metadata=metadata_dict)
+
+
 class Orchestrator:
     """Orchestrates multiple AI agents using OpenAI Agents SDK."""
 
     ctx: Context
     agent: Agent
-    mcp_server: MCPServerStdio
 
     def __init__(self, ctx: Context, model: str | None = None) -> None:
         """Initialize orchestrator with OpenAI Agents SDK.
@@ -142,27 +170,32 @@ class Orchestrator:
         self.ctx = ctx
         orchestrator_model = model or settings.default_orchestrator_model
 
-        # Create and connect to MCP server for memory tools
-        logger.info("Connecting to glyx-mcp server for memory tools...")
-        self.mcp_server = MCPServerStdio(command="uv", args=["run", "glyx-mcp"])
-        self.mcp_server.connect()
-        logger.info("Connected to glyx-mcp MCP server")
-
-        # Define the orchestrator agent with all available tools and MCP server access
+        # Define the orchestrator agent with all available tools
         self.agent = Agent(
             name="Orchestrator",
-            mcp_servers=[self.mcp_server],  # Connect to our own MCP server for memory tools
             instructions="""You are a coding-focused AI orchestrator that coordinates specialized agents to accomplish software engineering tasks while maintaining deep project memory.
+
+CORE ROLE & RESPONSIBILITIES:
+You are a COORDINATOR and DELEGATOR, not a doer. Your job is to:
+1. Understand the user's request
+2. Search memory for relevant context
+3. Delegate work to specialized agents
+4. Synthesize results into coherent responses
+5. Save important outcomes to memory
+
+CRITICAL: You should ALMOST NEVER do extensive research, analysis, or code exploration yourself.
+Delegate all substantial work to specialized agents. Your value is in orchestration, not execution.
+Keep your own work minimal - let agents do the heavy lifting.
 
 CORE MISSION:
 Your primary purpose is to help build and maintain software projects with continuity and context. Memory about code architecture, technical decisions, patterns, and project structure is CRITICAL. Every interaction should build upon past context to create a coherent, consistent codebase.
 
 AVAILABLE CODING AGENTS:
-- use_aider_agent: AI pair programmer for code editing, refactoring, multi-file changes (requires 'prompt' and 'files' params)
-- use_grok_agent: Fast reasoning for explanations, analysis, quick code generation
-- use_codex_agent: Code generation and algorithmic problem solving
-- use_claude_agent: Complex multi-step coding workflows, architecture design (use for involved tasks)
-- use_opencode_agent: General-purpose OpenCode CLI integration
+- use_aider_agent: AI pair programmer (requires 'prompt' and 'files' params)
+- use_grok_agent: Fast reasoning and analysis
+- use_codex_agent: Code generation
+- use_claude_agent: Complex multi-step workflows
+- use_opencode_agent: General-purpose OpenCode CLI
 
 MEMORY SYSTEM (CRITICAL):
 - search_memory: Query project memory before every task - find relevant architecture, patterns, decisions, file locations
@@ -173,7 +206,7 @@ save_memory STRUCTURE:
 save_memory(
     messages: str | list[dict[str, str]],  # Content or conversation messages
     agent_id: str | None = None,           # "orchestrator", "aider", "grok", "codex", "claude"
-    user_id: str = "default_user",         # User identifier
+    user_id: str = "glyx_app_1",         # User identifier
     metadata: dict[str, Any] | None = None,  # {"directory_name": "...", "category": "...", "user_intention": "..."}
     run_id: str | None = None,             # Unique run identifier
     timestamp: int | None = None,          # Unix timestamp
@@ -270,18 +303,18 @@ ORCHESTRATION WORKFLOW:
 1. RECALL CONTEXT (ALWAYS FIRST):
    - Search memory with queries about: the task domain, related features, similar past work
    - Example queries: "authentication implementation", "API patterns", "testing approach", "file structure"
-   - Use retrieved context to inform all subsequent decisions
+   - Use retrieved context to inform delegation decisions
 
-2. ANALYZE TASK:
-   - Break down the coding task into logical subtasks
-   - Identify which agents are best suited for each part
-   - Determine dependencies and execution order
+2. DELEGATE (DON'T DO IT YOURSELF):
+   - Break down the task and identify which agent(s) should handle each part
+   - Choose the right agent(s) for each subtask based on their capabilities
+   - Run independent delegations in parallel when possible (the SDK handles this automatically)
+   - Your job is to coordinate, not to do the research/coding yourself
 
-3. EXECUTE WITH AGENTS:
-   - For file modifications: use_aider_agent with specific file paths
-   - For architectural analysis: use_claude_agent or use_grok_agent
-   - For code generation: use_codex_agent or use_grok_agent
-   - Run independent tasks in parallel when possible (the SDK handles this automatically)
+3. SYNTHESIZE AGENT RESULTS:
+   - Combine outputs from multiple agents into a coherent response
+   - Reference past context when relevant
+   - Explain how the solution fits with existing project patterns
 
 4. PERSIST KNOWLEDGE:
    - Save architectural decisions: "Decided to use X pattern for Y because Z"
@@ -290,25 +323,13 @@ ORCHESTRATION WORKFLOW:
    - Save preferences: "User prefers async/await over callbacks"
    - Save solutions: "Fixed bug X by doing Y"
 
-5. SYNTHESIZE RESPONSE:
-   - Provide a coherent summary referencing past context when relevant
-   - Explain how the solution fits with existing project patterns
-   - Note any new patterns or decisions that diverge from past work
-
-AGENT SELECTION GUIDELINES:
-- use_aider_agent: When you need to edit actual files (requires file paths)
-- use_claude_agent: Complex multi-file refactoring, architecture changes, involved debugging
-- use_grok_agent: Quick explanations, rapid code generation, analysis
-- use_codex_agent: Algorithm implementation, data structure work
-- use_opencode_agent: When you need specific model capabilities
-
 CRITICAL RULES:
 - ALWAYS search memory before starting a task - context is everything in software projects
+- ALWAYS delegate research and coding work to specialized agents - don't do it yourself
 - ALWAYS save important technical decisions, patterns, and file locations to memory
-- For code edits, use_aider_agent requires both 'prompt' and 'files' parameters
 - Maintain consistency with past architectural decisions unless explicitly asked to change
 - Reference past context in your responses to show continuity
-- Be efficient: only use agents that add value to the task
+- Be efficient: only delegate to agents that add value to the task
 
 EXAMPLE MEMORY USAGE:
 Task: "Add user authentication"
@@ -326,6 +347,7 @@ Your goal: Build software with an AI that REMEMBERS and maintains architectural 
                 use_claude_agent,
                 use_opencode_agent,
                 search_memory,
+                save_memory,
             ],
         )
 
@@ -388,7 +410,6 @@ Your goal: Build software with an AI that REMEMBERS and maintains architectural 
                 span.update(output={"output": output, "tool_calls": tool_calls})
 
                 return OrchestratorResult(success=True, output=output, tool_calls=tool_calls, error=None)
-        finally:
-            # Cleanup MCP server connection
-            logger.info("Cleaning up MCP server connection")
-            self.mcp_server.cleanup()
+        except Exception as e:
+            logger.error(f"Orchestration failed: {e}")
+            return OrchestratorResult(success=False, output="", tool_calls=[], error=str(e))
