@@ -14,7 +14,8 @@
       "Read(//home/parallels/glyx-mcp-orchestration/**)",
       "mcp__zen__thinkdeep",
       "Bash(mcp list-tools:*)",
-      "mcp__glyx-mcp__orchestrate"
+      "mcp__glyx-mcp__orchestrate",
+      "WebFetch(domain:github.com)"
     ]
   },
   "enableAllProjectMcpServers": true,

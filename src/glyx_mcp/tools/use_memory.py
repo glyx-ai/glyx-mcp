@@ -2,58 +2,17 @@
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any
+import logging
+from typing import Annotated, Literal, Optional
 
 from mem0 import MemoryClient
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from glyx_mcp.settings import settings
 
+logger = logging.getLogger(__name__)
+
 mem0_client = MemoryClient(api_key=settings.mem0_api_key) if settings.mem0_api_key else None
-
-
-class MemoryEvent(str, Enum):
-    """Event types for memory operations."""
-
-    ADD = "ADD"
-    UPDATE = "UPDATE"
-    DELETE = "DELETE"
-
-
-class Message(BaseModel):
-    """Message structure for conversation memory."""
-
-    role: str = Field(..., description="Either 'user' or 'assistant'")
-    content: str = Field(..., description="The actual message text")
-
-
-class GlyxMemory(BaseModel):
-    """Structured memory request matching Mem0 API v2."""
-
-    messages: list[Message] | str = Field(
-        ...,
-        description="Array of message objects or a single string for simple memories",
-    )
-    agent_id: str | None = Field(None, description="Unique identifier of the agent")
-    user_id: str | None = Field(None, description="Unique identifier of the user")
-    app_id: str | None = Field(None, description="Unique identifier of the application")
-    run_id: str | None = Field(None, description="Unique identifier of the run")
-    metadata: dict[str, Any] | None = Field(None, description="Additional metadata (location, time, ids, etc.)")
-    includes: str | None = Field(None, min_length=1, description="Specific preferences to include")
-    excludes: str | None = Field(None, min_length=1, description="Specific preferences to exclude")
-    infer: bool = Field(True, description="Whether to infer memories or directly store messages")
-    output_format: str | None = Field("v1.1", description="Response format (v1.1 recommended)")
-    custom_categories: list[dict[str, str]] | None = Field(None, description="Custom category definitions")
-    custom_instructions: str | None = Field(None, description="Project-specific guidelines for handling memories")
-    immutable: bool = Field(False, description="Whether the memory is immutable")
-    async_mode: bool = Field(True, description="Whether to add memory asynchronously")
-    timestamp: int | None = Field(None, description="Unix timestamp of the memory")
-    expiration_date: str | None = Field(None, description="Expiration date in YYYY-MM-DD format")
-    org_id: str | None = Field(None, description="Organization identifier")
-    project_id: str | None = Field(None, description="Project identifier")
-    version: str | None = Field(None, description="API version (v2 recommended)")
-    enable_graph: bool = Field(True, description="Enable graph-based memory relationships")
 
 
 # Custom categories for coding project memory
@@ -77,76 +36,101 @@ def setup_custom_categories() -> str:
     return f"Custom categories configured: {result}"
 
 
-def search_memory(query: str, user_id: str = "glyx_app_1", limit: int = 5) -> str:
+def search_memory(
+    query: Annotated[str, Field(description="Search query (e.g., 'authentication implementation', 'API patterns')")],
+    limit: Annotated[int, Field(description="Maximum number of memories to return", ge=1, le=100)] = 5,
+    user_id: Annotated[str, Field(description="User identifier for memory segmentation")] = "glyx_app_1",
+    agent_id: Annotated[Optional[str], Field(description="Filter by agent (e.g., 'orchestrator', 'aider')")] = None,
+    category: Annotated[
+        Optional[Literal["architecture", "integrations", "code_style_guidelines", "project_id", "observability", "product", "key_concept"]],
+        Field(description="Filter by category")
+    ] = None,
+) -> str:
     """Search past conversations and project context from memory.
 
     Use this to recall architecture decisions, code patterns, file locations, and past solutions.
-
-    Args:
-        query: Search query (e.g., "authentication implementation", "API patterns", "test setup")
-        user_id: User identifier for memory segmentation
-        limit: Maximum number of memories to return
-
-    Returns:
-        Relevant memories from past conversations and project work, including graph relationships
     """
+    logger.info(f"search_memory called with query={query}, limit={limit}, user_id={user_id}")
+
     if not mem0_client:
+        logger.warning("Memory feature not available - MEM0_API_KEY not configured")
         return "Memory feature not available - MEM0_API_KEY not configured"
 
-    memories = mem0_client.search(query=query, user_id=user_id, limit=limit, enable_graph=True)
-    return str(memories)
+    # Build filters dict with user_id (required)
+    filter_dict = {"user_id": user_id}
+    logger.debug(f"Calling mem0_client.search with filters={filter_dict}")
+
+    # Call mem0 search
+    memories = mem0_client.search(
+        query=query,
+        filters=filter_dict,
+    )
+
+    import json
+    result = json.dumps(memories)
+    logger.info(f"search_memory returning {len(result)} characters")
+    return result
 
 
 def save_memory(
-    messages: str | list[dict[str, str]],
-    agent_id: str | None = None,
-    user_id: str = "glyx_app_1",
-    metadata: dict[str, Any] | None = None,
-    run_id: str | None = None,
-    timestamp: int | None = None,
+    content: Annotated[str, Field(description="The memory content to store")],
+    agent_id: Annotated[str, Field(description="Agent identifier (e.g., 'orchestrator', 'aider', 'grok', 'claude')")],
+    run_id: Annotated[str, Field(description="Unique identifier for the current execution run")],
+    user_id: Annotated[str, Field(description="User identifier for memory segmentation")] = "glyx_app_1",
+    directory_name: Annotated[Optional[str], Field(description="Directory or project name (e.g., 'glyx-mcp')")] = None,
+    category: Annotated[
+        Optional[Literal["architecture", "integrations", "code_style_guidelines", "project_id", "observability", "product", "key_concept"]],
+        Field(description="Memory category")
+    ] = None,
 ) -> str:
     """Save structured memory with metadata and context.
 
-    The agent is responsible for determining what metadata to include based on the context.
-
-    Args:
-        messages: Content to store (string or list of message dicts with 'role' and 'content')
-        agent_id: Identifier of the agent creating this memory (e.g., "orchestrator", "aider", "grok")
-        user_id: User identifier for memory segmentation
-        metadata: Additional context (e.g., {"directory_name": "glyx-mcp", "category": "architecture", "user_intention": "refactor"})
-        run_id: Unique identifier for the current execution run
-        timestamp: Unix timestamp of when this memory was created
-
-    Returns:
-        Confirmation of memory storage
-
-    Example:
-        save_memory(
-            messages="Orchestrator uses OpenAI Agents SDK for parallel execution",
-            agent_id="orchestrator",
-            metadata={"directory_name": "glyx-mcp", "category": "architecture"},
-        )
+    Categories:
+    - architecture: System design, component structure, design patterns
+    - integrations: MCP tools, SDK integrations, APIs, third-party services
+    - code_style_guidelines: Project conventions, coding style, naming patterns
+    - project_id: Project identity, purpose, core mission
+    - observability: Logging, tracing, monitoring, debugging approaches
+    - product: Product features, user-facing functionality
+    - key_concept: Important concepts, patterns, paradigms
     """
+    logger.info(f"save_memory called: content={content[:100]}..., agent_id={agent_id}, category={category}")
+
     if not mem0_client:
+        logger.warning("Memory feature not available - MEM0_API_KEY not configured")
         return "Memory feature not available - MEM0_API_KEY not configured"
 
-    # Build the memory request
-    memory = GlyxMemory(
-        messages=messages,
-        agent_id=agent_id,
-        user_id=user_id,
-        metadata=metadata,
-        run_id=run_id,
-        timestamp=timestamp,
-        enable_graph=True,
-    )
+    # Generate timestamp automatically
+    import time
+    timestamp = int(time.time())
+    logger.debug(f"Generated timestamp: {timestamp}")
 
-    # Convert to dict and extract fields for mem0_client.add()
-    memory_dict = memory.model_dump(exclude_none=True)
-    enable_graph = memory_dict.pop("enable_graph", True)
+    # Build metadata dict
+    metadata_dict = {}
+    if directory_name:
+        metadata_dict["directory_name"] = directory_name
+    if category:
+        metadata_dict["category"] = category
 
-    result = mem0_client.add(enable_graph=enable_graph, **memory_dict)
-    return f"Memory saved: {result}"
+    logger.debug(f"Building memory with metadata={metadata_dict}")
+
+    # Build the memory request directly
+    memory_dict = {
+        "messages": content,
+        "agent_id": agent_id,
+        "user_id": user_id,
+        "run_id": run_id,
+        "timestamp": timestamp,
+    }
+    if metadata_dict:
+        memory_dict["metadata"] = metadata_dict
+
+    logger.debug(f"Calling mem0_client.add with enable_graph=True")
+    result = mem0_client.add(enable_graph=True, **memory_dict)
+
+    response = f"Memory saved: {result}"
+    logger.info(f"save_memory returning: {response}")
+    return response
 
 
 def delete_all_memories(user_id: str = "glyx_app_1") -> str:

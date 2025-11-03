@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from agents import Agent, Runner, function_tool
 from fastmcp import Context
@@ -127,31 +126,9 @@ async def use_opencode_agent(prompt: str) -> str:
     return result.output
 
 
-# Memory metadata model for strict schema compliance
-class MemoryMetadata(BaseModel):
-    """Metadata for memory storage."""
-    directory_name: str | None = None
-    category: str | None = None
-    user_intention: str | None = None
-
-
-# Wrap memory functions as function_tools
-@function_tool
-def search_memory(query: str, user_id: str = "glyx_app_1", limit: int = 5) -> str:
-    """Search past conversations and project context from memory."""
-    return search_memory_fn(query=query, user_id=user_id, limit=limit)
-
-
-@function_tool
-def save_memory(
-    messages: str,
-    agent_id: str | None = None,
-    user_id: str = "glyx_app_1",
-    metadata: MemoryMetadata | None = None,
-) -> str:
-    """Save structured memory with metadata and context."""
-    metadata_dict = metadata.model_dump() if metadata else None
-    return save_memory_fn(messages=messages, agent_id=agent_id, user_id=user_id, metadata=metadata_dict)
+# Wrap memory functions as function_tools (direct wrapping)
+search_memory = function_tool(search_memory_fn)
+save_memory = function_tool(save_memory_fn)
 
 
 class Orchestrator:
