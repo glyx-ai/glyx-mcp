@@ -20,7 +20,7 @@ from glyx_mcp.tools.use_memory import (
     setup_custom_categories,
 )
 from glyx_mcp.tools.use_opencode import use_opencode
-from glyx_mcp.tools.use_tasks import assign_task, create_task, update_task
+from glyx_mcp_tasks.server import mcp as tasks_mcp
 from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 
 
@@ -67,9 +67,10 @@ mcp.tool(search_memory)
 mcp.tool(save_memory)
 mcp.tool(delete_all_memories)
 mcp.tool(setup_custom_categories)
-mcp.tool(create_task)
-mcp.tool(assign_task)
-mcp.tool(update_task)
+
+# Mount task tracking server
+logger.info("Mounting task tracking server...")
+mcp.mount(tasks_mcp)
 
 
 

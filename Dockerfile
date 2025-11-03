@@ -15,9 +15,13 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
 
 # Copy project files
-COPY pyproject.toml ./
-COPY README.md ./
-COPY src/ ./src/
+COPY glyx-mcp/pyproject.toml ./
+COPY glyx-mcp/README.md ./
+COPY glyx-mcp/src/ ./src/
+
+# Copy local dependency and update path in pyproject.toml
+COPY glyx-mcp-tasks /tmp/glyx-mcp-tasks
+RUN sed -i 's|file:///home/parallels/glyx-mcp-tasks|file:///tmp/glyx-mcp-tasks|g' pyproject.toml
 
 # Install Python dependencies
 RUN uv pip install --system -e ".[dev]"

@@ -2,7 +2,9 @@ services:
   glyx-mcp:
     labels:
       - "glyx-mcp"
-    build: .
+    build:
+      context: ..
+      dockerfile: glyx-mcp/Dockerfile
     image: glyx-mcp:latest
     container_name: glyx-mcp-server
     stdin_open: true

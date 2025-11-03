@@ -16,6 +16,9 @@
       "Bash(mcp list-tools:*)",
       "mcp__glyx-mcp__orchestrate",
       "WebFetch(domain:github.com)"
+    ],
+    "additionalDirectories": [
+      "/home/parallels/glyx-mcp-tasks/"
     ]
   },
   "enableAllProjectMcpServers": true,

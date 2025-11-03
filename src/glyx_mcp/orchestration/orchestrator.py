@@ -14,9 +14,9 @@ from glyx_mcp.models.task import Task
 from glyx_mcp.settings import settings
 from glyx_mcp.tools.use_memory import search_memory as search_memory_fn
 from glyx_mcp.tools.use_memory import save_memory as save_memory_fn
-from glyx_mcp.tools.use_tasks import assign_task as assign_task_fn
-from glyx_mcp.tools.use_tasks import create_task as create_task_fn
-from glyx_mcp.tools.use_tasks import update_task as update_task_fn
+from glyx_mcp_tasks.tools.task_tools import assign_task as assign_task_fn
+from glyx_mcp_tasks.tools.task_tools import create_task as create_task_fn
+from glyx_mcp_tasks.tools.task_tools import update_task as update_task_fn
 
 logger = logging.getLogger(__name__)
 

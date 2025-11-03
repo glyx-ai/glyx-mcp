@@ -31,8 +31,6 @@ async def use_opencode(
         "subcmd": subcmd,
     }
 
-    if model:
-        task_config["model"] = model
 
     result = await ComposableAgent.from_key(AgentKey.OPENCODE).execute(task_config, timeout=300)
 
