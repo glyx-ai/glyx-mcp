@@ -24,6 +24,7 @@ CUSTOM_CATEGORIES = [
     {"category": "observability", "description": "Logging strategies, tracing implementation, monitoring setup, debugging approaches, and error handling patterns"},
     {"category": "product", "description": "Product features, user-facing functionality, capabilities, and what the system delivers to users"},
     {"category": "key_concept", "description": "Important concepts, patterns, paradigms, and fundamental ideas that are central to understanding the system"},
+    {"category": "tasks", "description": "Task tracking, orchestration progress, agent assignments, task status updates, and work coordination"},
 ]
 
 
@@ -42,7 +43,7 @@ def search_memory(
     user_id: Annotated[str, Field(description="User identifier for memory segmentation")] = "glyx_app_1",
     agent_id: Annotated[Optional[str], Field(description="Filter by agent (e.g., 'orchestrator', 'aider')")] = None,
     category: Annotated[
-        Optional[Literal["architecture", "integrations", "code_style_guidelines", "project_id", "observability", "product", "key_concept"]],
+        Optional[Literal["architecture", "integrations", "code_style_guidelines", "project_id", "observability", "product", "key_concept", "tasks"]],
         Field(description="Filter by category")
     ] = None,
 ) -> str:
@@ -79,7 +80,7 @@ def save_memory(
     user_id: Annotated[str, Field(description="User identifier for memory segmentation")] = "glyx_app_1",
     directory_name: Annotated[Optional[str], Field(description="Directory or project name (e.g., 'glyx-mcp')")] = None,
     category: Annotated[
-        Optional[Literal["architecture", "integrations", "code_style_guidelines", "project_id", "observability", "product", "key_concept"]],
+        Optional[Literal["architecture", "integrations", "code_style_guidelines", "project_id", "observability", "product", "key_concept", "tasks"]],
         Field(description="Memory category")
     ] = None,
 ) -> str:
@@ -93,6 +94,7 @@ def save_memory(
     - observability: Logging, tracing, monitoring, debugging approaches
     - product: Product features, user-facing functionality
     - key_concept: Important concepts, patterns, paradigms
+    - tasks: Task tracking, orchestration progress, agent assignments
     """
     logger.info(f"save_memory called: content={content[:100]}..., agent_id={agent_id}, category={category}")
 
