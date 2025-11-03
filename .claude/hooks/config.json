@@ -1,0 +1,34 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__glyx-mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/mcp-logger.sh"
+          },
+          {
+            "type": "prompt",
+            "prompt": "The tool {{tool.name}} is about to be called with parameters: {{tool.parameters}}. Review the parameters and ensure they are correct before proceeding."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__glyx-mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/mcp-logger.sh"
+          },
+          {
+            "type": "prompt",
+            "prompt": "The tool {{tool.name}} has completed. Result: {{result}}. Analyze the result and determine next steps."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -110,3 +110,4 @@ uv run pytest tests/test_client_integration.py -vv -ss
 - To run logs, execute docker logs glyx-mcp-server
 - Kill all Glyx MCP containers: docker rm -f $(docker ps -aq --filter "name=glyx-mcp")
 - No defensive programming. Prefer a flat, expressive coding style.
+- Style guidelines: we ALWAYS put Python imports at the top of the file.

@@ -16,4 +16,4 @@ services:
       - ./src:/app/src
       # Mount logs directory
       - ./logs:/app/logs
-    working_dir: /workspace
+    working_dir: /app

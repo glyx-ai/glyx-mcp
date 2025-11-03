@@ -10,6 +10,7 @@ from langfuse import get_client
 from pydantic import BaseModel, Field
 
 from glyx_mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
+from glyx_mcp.models.task import Task
 from glyx_mcp.settings import settings
 from glyx_mcp.tools.use_memory import search_memory as search_memory_fn
 from glyx_mcp.tools.use_memory import save_memory as save_memory_fn
@@ -18,6 +19,9 @@ from glyx_mcp.tools.use_tasks import create_task as create_task_fn
 from glyx_mcp.tools.use_tasks import update_task as update_task_fn
 
 logger = logging.getLogger(__name__)
+
+# Generate task schema once at module load
+TASK_JSON_SCHEMA = Task.model_json_schema()
 
 
 class OrchestratorResult(BaseModel):
@@ -155,10 +159,14 @@ class Orchestrator:
         self.ctx = ctx
         orchestrator_model = model or settings.default_orchestrator_model
 
+        # Format instructions with task schema
+        import json
+        task_schema_str = json.dumps(TASK_JSON_SCHEMA, indent=2)
+
         # Define the orchestrator agent with all available tools
         self.agent = Agent(
             name="Orchestrator",
-            instructions="""You are a coding-focused AI orchestrator that coordinates specialized agents to accomplish software engineering tasks while maintaining deep project memory and task tracking.
+            instructions=f"""You are a coding-focused AI orchestrator that coordinates specialized agents to accomplish software engineering tasks while maintaining deep project memory and task tracking.
 
 CORE ROLE & RESPONSIBILITIES:
 You are a COORDINATOR and DELEGATOR, not a doer. Your job is to:
@@ -206,32 +214,21 @@ When you can skip task tracking:
 
 DEFAULT: Use task tracking unless the work is trivially simple.
 
+Tools accept Task models with this schema:
+{task_schema}
+
 Tools:
-- create_task: Create new tasks (title, description, priority="low|medium|high|critical", created_by="orchestrator")
-- assign_task: Assign tasks to agents (task_id, agent_id like "aider", "grok", "claude")
-- update_task: Update status and notes (task_id, status="todo|in_progress|blocked|done|failed", progress_notes)
+- create_task(task: Task, user_id: str, run_id: str) → Creates task and returns JSON with task_id
+- assign_task(task: Task, agent_id: str, user_id: str, run_id: str) → Assigns task to agent
+- update_task(task: Task, user_id: str, run_id: str) → Updates task status/notes
 
 Task lifecycle:
-1. create_task → get task_id
-2. assign_task(task_id, agent_id) → assign to agent
-3. update_task(task_id, status="in_progress") → mark as started
-4. Call the actual agent (use_aider_agent, use_grok_agent, etc.)
-5. update_task(task_id, status="done", progress_notes="what was accomplished") → mark complete
-
-Example flow:
-```python
-# Create
-task = create_task(title="Implement login", description="Add OAuth2", priority="high", created_by="orchestrator", run_id="run123")
-task_id = parse_task_id_from_response(task)
-
-# Assign and execute
-assign_task(task_id=task_id, agent_id="aider", run_id="run123")
-update_task(task_id=task_id, status="in_progress", run_id="run123")
-result = use_aider_agent(prompt="Implement OAuth2 login", files="src/auth/login.py")
-
-# Complete
-update_task(task_id=task_id, status="done", progress_notes="Implemented OAuth2 in src/auth/login.py", run_id="run123")
-```
+1. Create Task instance with title, description, created_by, priority
+2. create_task(task) → get task_id from response
+3. Update task.assigned_agent and call assign_task(task, agent_id)
+4. Update task.status="in_progress" and call update_task(task)
+5. Call the actual agent (use_aider_agent, use_grok_agent, etc.)
+6. Update task.status="done", add progress notes, call update_task(task)
 
 save_memory STRUCTURE:
 ```python
@@ -456,7 +453,7 @@ save_memory(
 )
 ```
 
-Your goal: Build software with an AI that REMEMBERS, TRACKS PROGRESS, and maintains architectural coherence across all interactions.""",
+Your goal: Build software with an AI that REMEMBERS, TRACKS PROGRESS, and maintains architectural coherence across all interactions.""".format(task_schema=task_schema_str),
             model=orchestrator_model,
             tools=[
                 use_aider_agent,

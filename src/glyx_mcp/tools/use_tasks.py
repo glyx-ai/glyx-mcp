@@ -4,15 +4,32 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Annotated, Any, Literal, Optional
+import time
+from typing import Annotated, Any
 
 from fastmcp import Context
-from pydantic import Field
+from pydantic import BeforeValidator
 
 from glyx_mcp.models.task import Task
 from glyx_mcp.tools.use_memory import mem0_client
 
 logger = logging.getLogger(__name__)
+
+
+def parse_task(v: Any) -> Task:
+    """Parse Task from string, dict, or Task instance."""
+    if isinstance(v, Task):
+        return v
+    elif isinstance(v, str):
+        return Task.model_validate_json(v)
+    elif isinstance(v, dict):
+        return Task.model_validate(v)
+    else:
+        raise ValueError(f"Cannot parse Task from type {type(v)}")
+
+
+# Type alias for Task input that accepts JSON string, dict, or Task
+TaskInput = Annotated[Task, BeforeValidator(parse_task)]
 
 
 async def _get_latest_task(task_id: str, user_id: str = "glyx_app_1") -> Task | None:
@@ -29,78 +46,52 @@ async def _get_latest_task(task_id: str, user_id: str = "glyx_app_1") -> Task | 
         logger.warning("Memory feature not available")
         return None
 
-    try:
-        # Search for the task in memory
-        memories = mem0_client.search(
-            query=f"task_id:{task_id}",
-            filters={"user_id": user_id},
-        )
+    # Search for the task in memory
+    memories = mem0_client.search(
+        query=f"task_id:{task_id}",
+        filters={"user_id": user_id},
+    )
 
-        if not memories or not memories.get("results"):
-            logger.warning(f"Task not found: {task_id}")
-            return None
-
-        # Get the most recent memory entry (first result)
-        latest_memory = memories["results"][0]
-        task_data = json.loads(latest_memory["memory"])
-
-        # Parse into Task model
-        return Task.model_validate_json(task_data)
-    except Exception as e:
-        logger.error(f"Error retrieving task {task_id}: {e}")
+    if not memories or not memories.get("results"):
+        logger.warning(f"Task not found: {task_id}")
         return None
+
+    # Get the most recent memory entry (first result)
+    latest_memory = memories["results"][0]
+    task_data = json.loads(latest_memory["memory"])
+
+    # Parse into Task model
+    return Task.model_validate_json(task_data)
 
 
 async def create_task(
-    title: Annotated[str, Field(description="Brief task title")],
-    description: Annotated[str, Field(description="Detailed task description")],
-    user_id: Annotated[str, Field(description="User identifier for memory segmentation")] = "glyx_app_1",
-    run_id: Annotated[str, Field(description="Unique identifier for the current execution run")] = "default",
-    priority: Annotated[
-        Literal["low", "medium", "high", "critical"],
-        Field(description="Task priority level")
-    ] = "medium",
-    created_by: Annotated[str, Field(description="Agent ID that created the task")] = "orchestrator",
-    metadata: Annotated[Optional[dict[str, Any]], Field(description="Additional task metadata")] = None,
+    task: TaskInput,
+    user_id: str = "glyx_app_1",
+    run_id: str = "default",
     ctx: Context | None = None,
 ) -> str:
     """Create a new task for tracking work in orchestration.
 
     Args:
-        title: Brief task title
-        description: Detailed task description
+        task: Task model to create (accepts JSON string, dict, or Task instance)
         user_id: User identifier for memory segmentation
         run_id: Unique identifier for the current execution run
-        priority: Task priority level (low, medium, high, critical)
-        created_by: Agent ID that created the task
-        metadata: Additional task metadata
         ctx: FastMCP context for logging (injected by FastMCP)
 
     Returns:
         JSON string with task_id and confirmation message
     """
-    if ctx:
-        await ctx.info("Creating task", extra={"title": title, "priority": priority})
+    await ctx.info("Creating task", extra={"title": task.title, "priority": task.priority})
 
     if not mem0_client:
         return json.dumps({"error": "Memory feature not available - MEM0_API_KEY not configured"})
 
-    # Create new Task instance
-    task = Task(
-        title=title,
-        description=description,
-        priority=priority,
-        created_by=created_by,
-        metadata=metadata or {},
-    )
-
     # Save to memory
-    import time
     timestamp = int(time.time())
 
     memory_dict = {
         "messages": task.model_dump_json(),
-        "agent_id": created_by,
+        "agent_id": task.created_by,
         "user_id": user_id,
         "run_id": run_id,
         "timestamp": timestamp,
@@ -112,34 +103,29 @@ async def create_task(
         }
     }
 
-    try:
-        result = mem0_client.add(enable_graph=True, **memory_dict)
+    result = mem0_client.add(enable_graph=True, **memory_dict)
 
-        if ctx:
-            await ctx.info("Task created successfully", extra={"task_id": task.task_id})
+    await ctx.info("Task created successfully", extra={"task_id": task.task_id})
 
-        return json.dumps({
-            "task_id": task.task_id,
-            "status": "created",
-            "message": f"Task '{title}' created successfully",
-            "memory_result": result
-        })
-    except Exception as e:
-        logger.error(f"Error creating task: {e}")
-        return json.dumps({"error": f"Failed to create task: {str(e)}"})
+    return json.dumps({
+        "task_id": task.task_id,
+        "status": "created",
+        "message": f"Task '{task.title}' created successfully",
+        "memory_result": result
+    })
 
 
 async def assign_task(
-    task_id: Annotated[str, Field(description="The task ID to assign")],
-    agent_id: Annotated[str, Field(description="Agent ID to assign the task to (e.g., 'aider', 'grok', 'claude')")],
-    user_id: Annotated[str, Field(description="User identifier for memory segmentation")] = "glyx_app_1",
-    run_id: Annotated[str, Field(description="Unique identifier for the current execution run")] = "default",
+    task: TaskInput,
+    agent_id: str,
+    user_id: str = "glyx_app_1",
+    run_id: str = "default",
     ctx: Context | None = None,
 ) -> str:
     """Assign a task to a specific agent.
 
     Args:
-        task_id: The task ID to assign
+        task: Task model to assign
         agent_id: Agent ID to assign the task to
         user_id: User identifier for memory segmentation
         run_id: Unique identifier for the current execution run
@@ -148,23 +134,16 @@ async def assign_task(
     Returns:
         JSON string with confirmation message
     """
-    if ctx:
-        await ctx.info("Assigning task", extra={"task_id": task_id, "agent_id": agent_id})
+    await ctx.info("Assigning task", extra={"task_id": task.task_id, "agent_id": agent_id})
 
     if not mem0_client:
         return json.dumps({"error": "Memory feature not available - MEM0_API_KEY not configured"})
-
-    # Retrieve the current task
-    task = await _get_latest_task(task_id, user_id)
-    if not task:
-        return json.dumps({"error": f"Task not found: {task_id}"})
 
     # Update assignment
     task.assign_to(agent_id)
     task.add_progress_note(f"Task assigned to {agent_id}")
 
     # Save updated task to memory
-    import time
     timestamp = int(time.time())
 
     memory_dict = {
@@ -182,74 +161,42 @@ async def assign_task(
         }
     }
 
-    try:
-        result = mem0_client.add(enable_graph=True, **memory_dict)
+    result = mem0_client.add(enable_graph=True, **memory_dict)
 
-        if ctx:
-            await ctx.info("Task assigned successfully", extra={"task_id": task_id, "agent_id": agent_id})
+    await ctx.info("Task assigned successfully", extra={"task_id": task.task_id, "agent_id": agent_id})
 
-        return json.dumps({
-            "task_id": task_id,
-            "assigned_agent": agent_id,
-            "status": "assigned",
-            "message": f"Task '{task.title}' assigned to {agent_id}",
-            "memory_result": result
-        })
-    except Exception as e:
-        logger.error(f"Error assigning task: {e}")
-        return json.dumps({"error": f"Failed to assign task: {str(e)}"})
+    return json.dumps({
+        "task_id": task.task_id,
+        "assigned_agent": agent_id,
+        "status": "assigned",
+        "message": f"Task '{task.title}' assigned to {agent_id}",
+        "memory_result": result
+    })
 
 
 async def update_task(
-    task_id: Annotated[str, Field(description="The task ID to update")],
-    user_id: Annotated[str, Field(description="User identifier for memory segmentation")] = "glyx_app_1",
-    run_id: Annotated[str, Field(description="Unique identifier for the current execution run")] = "default",
-    status: Annotated[
-        Optional[Literal["todo", "in_progress", "blocked", "done", "failed"]],
-        Field(description="New task status")
-    ] = None,
-    progress_notes: Annotated[Optional[str], Field(description="Progress update note")] = None,
-    metadata: Annotated[Optional[dict[str, Any]], Field(description="Additional metadata to merge")] = None,
+    task: TaskInput,
+    user_id: str = "glyx_app_1",
+    run_id: str = "default",
     ctx: Context | None = None,
 ) -> str:
-    """Update a task's status, add progress notes, or update metadata.
+    """Update a task's status, progress notes, or metadata.
 
     Args:
-        task_id: The task ID to update
+        task: Task model with updates applied
         user_id: User identifier for memory segmentation
         run_id: Unique identifier for the current execution run
-        status: New task status (optional)
-        progress_notes: Progress update note to add (optional)
-        metadata: Additional metadata to merge (optional)
         ctx: FastMCP context for logging (injected by FastMCP)
 
     Returns:
         JSON string with updated task details
     """
-    if ctx:
-        await ctx.info("Updating task", extra={"task_id": task_id, "status": status})
+    await ctx.info("Updating task", extra={"task_id": task.task_id, "status": task.status})
 
     if not mem0_client:
         return json.dumps({"error": "Memory feature not available - MEM0_API_KEY not configured"})
 
-    # Retrieve the current task
-    task = await _get_latest_task(task_id, user_id)
-    if not task:
-        return json.dumps({"error": f"Task not found: {task_id}"})
-
-    # Apply updates
-    if status:
-        task.update_status(status)
-
-    if progress_notes:
-        task.add_progress_note(progress_notes)
-
-    if metadata:
-        task.metadata.update(metadata)
-        task.updated_at = task.updated_at  # Touch timestamp
-
     # Save updated task to memory
-    import time
     timestamp = int(time.time())
 
     memory_dict = {
@@ -269,21 +216,16 @@ async def update_task(
     if task.assigned_agent:
         memory_dict["metadata"]["assigned_agent"] = task.assigned_agent
 
-    try:
-        result = mem0_client.add(enable_graph=True, **memory_dict)
+    result = mem0_client.add(enable_graph=True, **memory_dict)
 
-        if ctx:
-            await ctx.info("Task updated successfully", extra={"task_id": task_id, "status": task.status})
+    await ctx.info("Task updated successfully", extra={"task_id": task.task_id, "status": task.status})
 
-        return json.dumps({
-            "task_id": task_id,
-            "status": task.status,
-            "title": task.title,
-            "assigned_agent": task.assigned_agent,
-            "progress_notes": task.progress_notes,
-            "message": f"Task '{task.title}' updated successfully",
-            "memory_result": result
-        })
-    except Exception as e:
-        logger.error(f"Error updating task: {e}")
-        return json.dumps({"error": f"Failed to update task: {str(e)}"})
+    return json.dumps({
+        "task_id": task.task_id,
+        "status": task.status,
+        "title": task.title,
+        "assigned_agent": task.assigned_agent,
+        "progress_notes": task.progress_notes,
+        "message": f"Task '{task.title}' updated successfully",
+        "memory_result": result
+    })

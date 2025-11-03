@@ -4,11 +4,14 @@ from datetime import datetime
 from typing import Any, Literal, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.types import Json
 
 
 class Task(BaseModel):
     """Task model for tracking agent work in orchestration."""
+
+    model_config = ConfigDict(extra='forbid')
 
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     title: str = Field(..., min_length=1, description="Brief task title")
@@ -25,7 +28,7 @@ class Task(BaseModel):
     created_by: str = Field(..., description="Agent ID that created the task")
     created_at: datetime = Field(default_factory=datetime.now)
     progress_notes: list[str] = Field(default_factory=list, description="Chronological progress updates")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional task metadata")
+    metadata: Json[dict[str, Any]] = Field(default_factory=dict, description="Additional task metadata as JSON")
     updated_at: datetime = Field(default_factory=datetime.now)
 
     def add_progress_note(self, note: str) -> None:
