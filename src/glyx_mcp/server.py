@@ -7,7 +7,7 @@ import sys
 
 from fastmcp import FastMCP, Context
 from fastmcp.utilities.logging import get_logger
-from langfuse import Langfuse, observe
+from langfuse import Langfuse
 
 from glyx_mcp.orchestration.orchestrator import Orchestrator
 from glyx_mcp.settings import settings
@@ -103,7 +103,7 @@ async def orchestrate(
         logger.error(f"Orchestration failed: {e}")
         return f"❌ Orchestration failed: {e}"
 
-@observe
+
 def main() -> None:
     """Run the FastMCP server."""
     mcp.run()

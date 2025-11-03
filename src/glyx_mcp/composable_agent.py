@@ -10,7 +10,6 @@ from time import time
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
-from langfuse import get_client
 
 logger = logging.getLogger(__name__)
 

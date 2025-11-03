@@ -6,7 +6,6 @@ import logging
 
 from agents import Agent, Runner, function_tool
 from fastmcp import Context
-from langfuse import get_client
 from pydantic import BaseModel, Field
 
 from glyx_mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
@@ -181,7 +180,7 @@ class Orchestrator:
                 expected_format: Description of the expected response format (e.g., "file paths", "yes/no", "priority level")
 
             Returns:
-                The user's response as a string
+                The user's response as a string, or a structured prompt for Claude Code to use AskUserQuestion
             """
             logger.info(f"Orchestrator asking user: {question}")
 
@@ -192,15 +191,21 @@ class Orchestrator:
             class UserResponse(BaseModel):
                 answer: str = Field(..., description=f"Your response ({expected_format})")
 
-            response = await ctx.elicit(message=full_message, response_type=UserResponse)
+            try:
+                response = await ctx.elicit(message=full_message, response_type=UserResponse)
 
-            if hasattr(response, "data") and hasattr(response.data, "answer"):
-                answer = response.data.answer
-                logger.info(f"User answered: {answer}")
-                return answer
-            else:
-                logger.warning("User declined or cancelled the question")
-                return "[User declined to answer]"
+                if hasattr(response, "data") and hasattr(response.data, "answer"):
+                    answer = response.data.answer
+                    logger.info(f"User answered: {answer}")
+                    return answer
+                else:
+                    logger.warning("User declined or cancelled the question - returning structured prompt for AskUserQuestion")
+                    # Return a structured signal that tells the orchestrator to format this as an AskUserQuestion request
+                    return f"[NEEDS_STRUCTURED_QUESTION]\nQuestion: {question}\nExpected Format: {expected_format}"
+            except Exception as e:
+                logger.warning(f"Elicitation failed: {e} - returning structured prompt for AskUserQuestion")
+                # Return a structured signal that tells the orchestrator to format this as an AskUserQuestion request
+                return f"[NEEDS_STRUCTURED_QUESTION]\nQuestion: {question}\nExpected Format: {expected_format}"
 
         # Get orchestrator instructions with task schema injected
         instructions = get_orchestrator_instructions(task_schema_str)
@@ -234,56 +239,50 @@ class Orchestrator:
         Returns:
             OrchestratorResult with final output
         """
-        langfuse = get_client()
         try:
-            with langfuse.start_as_current_span(name="orchestrator_execution") as span:
-                span.update(input={"task": task})
+            await self.ctx.report_progress(progress=0, total=100, message="Starting orchestration...")
+            await self.ctx.info(f"🎯 Orchestrating task: {task}")
 
-                await self.ctx.report_progress(progress=0, total=100, message="Starting orchestration...")
-                await self.ctx.info(f"🎯 Orchestrating task: {task}")
+            logger.info(f"Orchestrating task: {task}")
 
-                logger.info(f"Orchestrating task: {task}")
+            # Track execution details for rich output
+            tool_calls = []
+            agent_updates = []
 
-                # Track execution details for rich output
-                tool_calls = []
-                agent_updates = []
+            # Run the orchestrator agent with streaming
+            logger.info("Starting streaming orchestration")
+            result = Runner.run_streamed(
+                self.agent,
+                input=task,
+            )
 
-                # Run the orchestrator agent with streaming
-                logger.info("Starting streaming orchestration")
-                result = Runner.run_streamed(
-                    self.agent,
-                    input=task,
-                )
+            # Process stream events
+            async for event in result.stream_events():
+                if event.type == "run_item_stream_event":
+                    item = event.item
+                    if item.type == "tool_call_item":
+                        tool_name = item.raw_item.name
+                        tool_calls.append(tool_name)
+                        logger.info(f"Tool called: {tool_name}")
+                        await self.ctx.info(f"🔧 Calling agent: {tool_name}")
+                    elif item.type == "message_output_item":
+                        logger.info(f"Message output received")
 
-                # Process stream events
-                async for event in result.stream_events():
-                    if event.type == "run_item_stream_event":
-                        item = event.item
-                        if item.type == "tool_call_item":
-                            tool_name = item.raw_item.name
-                            tool_calls.append(tool_name)
-                            logger.info(f"Tool called: {tool_name}")
-                            await self.ctx.info(f"🔧 Calling agent: {tool_name}")
-                        elif item.type == "message_output_item":
-                            logger.info(f"Message output received")
+                elif event.type == "agent_updated_stream_event":
+                    agent_name = event.new_agent.name
+                    agent_updates.append(agent_name)
+                    logger.info(f"Agent updated: {agent_name}")
+                    await self.ctx.info(f"🤖 Agent: {agent_name}")
 
-                    elif event.type == "agent_updated_stream_event":
-                        agent_name = event.new_agent.name
-                        agent_updates.append(agent_name)
-                        logger.info(f"Agent updated: {agent_name}")
-                        await self.ctx.info(f"🤖 Agent: {agent_name}")
+            # Get final output (no await needed - already consumed stream)
+            output = result.final_output
 
-                # Get final output (no await needed - already consumed stream)
-                output = result.final_output
+            logger.info(f"Orchestration complete. Tool calls: {len(tool_calls)}")
 
-                logger.info(f"Orchestration complete. Tool calls: {len(tool_calls)}")
+            await self.ctx.report_progress(progress=100, total=100, message="Orchestration complete")
+            await self.ctx.info("✅ Orchestration completed successfully")
 
-                await self.ctx.report_progress(progress=100, total=100, message="Orchestration complete")
-                await self.ctx.info("✅ Orchestration completed successfully")
-
-                span.update(output={"output": output, "tool_calls": tool_calls})
-
-                return OrchestratorResult(success=True, output=output, tool_calls=tool_calls, error=None)
+            return OrchestratorResult(success=True, output=output, tool_calls=tool_calls, error=None)
         except Exception as e:
             logger.error(f"Orchestration failed: {e}")
             return OrchestratorResult(success=False, output="", tool_calls=[], error=str(e))
