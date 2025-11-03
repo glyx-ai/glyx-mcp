@@ -15,10 +15,8 @@ from glyx_mcp.tools.interact_with_user import ask_user
 from glyx_mcp.tools.use_aider import use_aider
 from glyx_mcp.tools.use_grok import use_grok
 from glyx_mcp.tools.use_memory import (
-    delete_all_memories,
     save_memory,
     search_memory,
-    setup_custom_categories,
 )
 from glyx_mcp.tools.use_opencode import use_opencode
 from glyx_mcp.tools.use_shot_scraper import use_shot_scraper
@@ -69,8 +67,6 @@ mcp.tool(use_opencode)
 mcp.tool(use_shot_scraper)
 mcp.tool(search_memory)
 mcp.tool(save_memory)
-mcp.tool(delete_all_memories)
-mcp.tool(setup_custom_categories)
 
 # Mount task tracking server
 logger.info("Mounting task tracking server...")

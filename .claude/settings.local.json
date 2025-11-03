@@ -15,7 +15,8 @@
       "mcp__zen__thinkdeep",
       "Bash(mcp list-tools:*)",
       "mcp__glyx-mcp__orchestrate",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "mcp__glyx-mcp__search_memory"
     ],
     "additionalDirectories": [
       "/home/parallels/glyx-mcp-tasks/"

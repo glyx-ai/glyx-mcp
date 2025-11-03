@@ -28,15 +28,6 @@ CUSTOM_CATEGORIES = [
 ]
 
 
-def setup_custom_categories() -> str:
-    """Initialize custom categories for the project. Call once during setup."""
-    if not mem0_client:
-        return "Memory feature not available - MEM0_API_KEY not configured"
-
-    result = mem0_client.project.update(custom_categories=CUSTOM_CATEGORIES)
-    return f"Custom categories configured: {result}"
-
-
 def search_memory(
     query: Annotated[str, Field(description="Search query (e.g., 'authentication implementation', 'API patterns')")],
     limit: Annotated[int, Field(description="Maximum number of memories to return", ge=1, le=100)] = 5,
@@ -133,19 +124,3 @@ def save_memory(
     response = f"Memory saved: {result}"
     logger.info(f"save_memory returning: {response}")
     return response
-
-
-def delete_all_memories(user_id: str = "glyx_app_1") -> str:
-    """Delete ALL memories for a user. Use with caution!
-
-    Args:
-        user_id: User identifier for memory segmentation
-
-    Returns:
-        Confirmation of deletion
-    """
-    if not mem0_client:
-        return "Memory feature not available - MEM0_API_KEY not configured"
-
-    result = mem0_client.delete_all(user_id=user_id)
-    return f"All memories deleted for user {user_id}: {result}"
