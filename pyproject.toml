@@ -17,6 +17,7 @@ dependencies = [
     "openinference-instrumentation-openai-agents>=1.3.0",
     "mem0ai>=1.0.0",
     "glyx-mcp-tasks @ file:///home/parallels/glyx-mcp-tasks",
+    "shot-scraper>=1.8",
 ]
 
 [project.optional-dependencies]

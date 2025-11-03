@@ -11,6 +11,7 @@ from langfuse import Langfuse, observe
 
 from glyx_mcp.orchestration.orchestrator import Orchestrator
 from glyx_mcp.settings import settings
+from glyx_mcp.tools.interact_with_user import ask_user
 from glyx_mcp.tools.use_aider import use_aider
 from glyx_mcp.tools.use_grok import use_grok
 from glyx_mcp.tools.use_memory import (
@@ -61,6 +62,7 @@ mcp = FastMCP("glyx-mcp")
 
 # Register tools with MCP server
 logger.info("Initializing MCP tools...")
+mcp.tool(ask_user)
 mcp.tool(use_aider)
 mcp.tool(use_grok)
 mcp.tool(use_opencode)
