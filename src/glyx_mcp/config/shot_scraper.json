@@ -1,0 +1,93 @@
+{
+  "shot_scraper": {
+    "command": "shot-scraper",
+    "version": ">=1.0.0",
+    "description": "Browser automation for screenshots and visual inspection",
+    "capabilities": ["screenshots", "browser_automation", "visual_qa"],
+    "args": {
+      "url": {
+        "flag": "",
+        "type": "string",
+        "required": true,
+        "description": "URL or local file path to capture"
+      },
+      "output": {
+        "flag": "--output",
+        "type": "string",
+        "required": false,
+        "default": null,
+        "description": "Output file path (e.g., screenshot.png)"
+      },
+      "width": {
+        "flag": "--width",
+        "type": "int",
+        "required": false,
+        "default": 1280,
+        "description": "Browser viewport width in pixels"
+      },
+      "height": {
+        "flag": "--height",
+        "type": "int",
+        "required": false,
+        "default": null,
+        "description": "Browser viewport height (null = full page)"
+      },
+      "selector": {
+        "flag": "--selector",
+        "type": "string",
+        "required": false,
+        "default": null,
+        "description": "CSS selector to capture specific element"
+      },
+      "wait": {
+        "flag": "--wait",
+        "type": "int",
+        "required": false,
+        "default": null,
+        "description": "Milliseconds to wait before screenshot"
+      },
+      "wait_for": {
+        "flag": "--wait-for",
+        "type": "string",
+        "required": false,
+        "default": null,
+        "description": "JavaScript condition to wait for (e.g., 'document.querySelector(\".loaded\")')"
+      },
+      "javascript": {
+        "flag": "--javascript",
+        "type": "string",
+        "required": false,
+        "default": null,
+        "description": "JavaScript to execute before capture"
+      },
+      "retina": {
+        "flag": "--retina",
+        "type": "bool",
+        "required": false,
+        "default": false,
+        "description": "Use 2x scale factor for high-DPI displays"
+      },
+      "quality": {
+        "flag": "--quality",
+        "type": "int",
+        "required": false,
+        "default": null,
+        "description": "JPEG quality (1-100, enables JPEG output)"
+      },
+      "interactive": {
+        "flag": "--interactive",
+        "type": "bool",
+        "required": false,
+        "default": false,
+        "description": "Open browser for manual interaction before capture"
+      },
+      "log_console": {
+        "flag": "--log-console",
+        "type": "bool",
+        "required": false,
+        "default": false,
+        "description": "Output browser console.log() to stderr"
+      }
+    }
+  }
+}

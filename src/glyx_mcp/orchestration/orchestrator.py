@@ -163,6 +163,44 @@ class Orchestrator:
         import json
         task_schema_str = json.dumps(TASK_JSON_SCHEMA, indent=2)
 
+        # Create ask_user tool with access to ctx
+        @function_tool
+        async def ask_user(question: str, expected_format: str = "free-form text") -> str:
+            """Ask the user a clarifying question and wait for their response.
+
+            Use this when you need additional information to properly orchestrate the task.
+            Examples:
+            - Ambiguous requirements that could be interpreted multiple ways
+            - Need to know which files/directories to focus on
+            - Missing information about constraints or preferences
+            - Unclear priority or scope
+
+            Args:
+                question: The question to ask the user (be specific and clear)
+                expected_format: Description of the expected response format (e.g., "file paths", "yes/no", "priority level")
+
+            Returns:
+                The user's response as a string
+            """
+            logger.info(f"Orchestrator asking user: {question}")
+
+            # Format the full message
+            full_message = f"{question}\n\nPlease provide: {expected_format}"
+
+            # Simple string response type
+            class UserResponse(BaseModel):
+                answer: str = Field(..., description=f"Your response ({expected_format})")
+
+            response = await ctx.elicit(message=full_message, response_type=UserResponse)
+
+            if hasattr(response, "data") and hasattr(response.data, "answer"):
+                answer = response.data.answer
+                logger.info(f"User answered: {answer}")
+                return answer
+            else:
+                logger.warning("User declined or cancelled the question")
+                return "[User declined to answer]"
+
         # Define the orchestrator agent with all available tools
         self.agent = Agent(
             name="Orchestrator",
@@ -170,7 +208,7 @@ class Orchestrator:
 
 CORE ROLE & RESPONSIBILITIES:
 You are a COORDINATOR and DELEGATOR, not a doer. Your job is to:
-1. Understand the user's request
+1. Understand the user's request (ask clarifying questions if needed)
 2. Search memory for relevant context
 3. **CREATE TASKS to break down work into trackable units**
 4. **ASSIGN tasks to specialized agents**
@@ -183,6 +221,17 @@ Delegate all substantial work to specialized agents. Your value is in orchestrat
 Keep your own work minimal - let agents do the heavy lifting.
 
 TASK TRACKING IS YOUR PRIMARY COORDINATION MECHANISM. Use it for ALL multi-step work.
+
+INTERACTIVE CLARIFICATION:
+You have access to ask_user() to request clarification when the user's request is ambiguous or lacks critical information.
+Use this tool EARLY in your workflow when:
+- The task could be interpreted multiple ways
+- You need to know which files/directories to focus on
+- Critical constraints or requirements are unclear
+- Priority or scope is ambiguous
+
+DO NOT ask obvious questions or questions you can answer by searching memory or having agents explore the codebase.
+Ask strategic questions that will prevent wasted effort or wrong assumptions.
 
 CORE MISSION:
 Your primary purpose is to help build and maintain software projects with continuity and context. Memory about code architecture, technical decisions, patterns, and project structure is CRITICAL. Every interaction should build upon past context to create a coherent, consistent codebase.
@@ -456,6 +505,7 @@ save_memory(
 Your goal: Build software with an AI that REMEMBERS, TRACKS PROGRESS, and maintains architectural coherence across all interactions.""".format(task_schema=task_schema_str),
             model=orchestrator_model,
             tools=[
+                ask_user,  # Interactive clarification
                 use_aider_agent,
                 use_grok_agent,
                 use_codex_agent,

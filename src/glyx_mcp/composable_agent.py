@@ -46,6 +46,7 @@ class AgentKey(str, Enum):
     GROK = "grok"
     DEEPSEEK_R1 = "deepseek_r1"
     KIMI_K2 = "kimi_k2"
+    SHOT_SCRAPER = "shot_scraper"
 
 
 @dataclass

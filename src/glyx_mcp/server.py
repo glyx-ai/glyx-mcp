@@ -20,6 +20,7 @@ from glyx_mcp.tools.use_memory import (
     setup_custom_categories,
 )
 from glyx_mcp.tools.use_opencode import use_opencode
+from glyx_mcp.tools.use_shot_scraper import use_shot_scraper
 from glyx_mcp_tasks.server import mcp as tasks_mcp
 from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 
@@ -63,6 +64,7 @@ logger.info("Initializing MCP tools...")
 mcp.tool(use_aider)
 mcp.tool(use_grok)
 mcp.tool(use_opencode)
+mcp.tool(use_shot_scraper)
 mcp.tool(search_memory)
 mcp.tool(save_memory)
 mcp.tool(delete_all_memories)
