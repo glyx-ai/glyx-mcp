@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from glyx_mcp.composable_agent import AgentConfig, ArgSpec
+from glyx.mcp.composable_agent import AgentConfig, ArgSpec
 
 
 class TestArgSpecValidation:
@@ -280,7 +280,7 @@ class TestExistingAgentConfigs:
 
     def test_all_existing_configs_are_valid(self) -> None:
         """Test that all existing agent config files pass validation."""
-        config_dir = Path(__file__).parent.parent / "src" / "glyx_mcp" / "config"
+        config_dir = Path(__file__).parent.parent / "src" / "glyx" / "mcp" / "config"
 
         if not config_dir.exists():
             pytest.skip("Config directory not found")
@@ -320,7 +320,7 @@ class TestExistingAgentConfigs:
 
     def test_aider_config_structure(self) -> None:
         """Test that aider.json has expected structure."""
-        config_dir = Path(__file__).parent.parent / "src" / "glyx_mcp" / "config"
+        config_dir = Path(__file__).parent.parent / "src" / "glyx" / "mcp" / "config"
         aider_config = config_dir / "aider.json"
 
         if not aider_config.exists():
@@ -336,7 +336,7 @@ class TestExistingAgentConfigs:
 
     def test_grok_config_structure(self) -> None:
         """Test that grok.json has expected structure."""
-        config_dir = Path(__file__).parent.parent / "src" / "glyx_mcp" / "config"
+        config_dir = Path(__file__).parent.parent / "src" / "glyx" / "mcp" / "config"
         grok_config = config_dir / "grok.json"
 
         if not grok_config.exists():
@@ -351,7 +351,7 @@ class TestExistingAgentConfigs:
 
     def test_all_configs_have_unique_agent_keys(self) -> None:
         """Test that all config files have unique agent keys."""
-        config_dir = Path(__file__).parent.parent / "src" / "glyx_mcp" / "config"
+        config_dir = Path(__file__).parent.parent / "src" / "glyx" / "mcp" / "config"
 
         if not config_dir.exists():
             pytest.skip("Config directory not found")
@@ -377,7 +377,7 @@ class TestExistingAgentConfigs:
 
     def test_all_configs_have_valid_commands(self) -> None:
         """Test that all configs have non-empty command strings."""
-        config_dir = Path(__file__).parent.parent / "src" / "glyx_mcp" / "config"
+        config_dir = Path(__file__).parent.parent / "src" / "glyx" / "mcp" / "config"
 
         if not config_dir.exists():
             pytest.skip("Config directory not found")

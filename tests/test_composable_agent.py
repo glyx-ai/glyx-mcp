@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from glyx_mcp.composable_agent import (
+from glyx.mcp.composable_agent import (
     AgentConfig,
     AgentResult,
     ArgSpec,

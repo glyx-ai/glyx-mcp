@@ -35,18 +35,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-langfuse = Langfuse(
-    public_key=settings.langfuse_public_key,
-    secret_key=settings.langfuse_secret_key,
-    host=settings.langfuse_host,
-)
-if not langfuse.auth_check():
-    raise RuntimeError(
-        "Langfuse authentication failed. Please check LANGFUSE_PUBLIC_KEY, "
-        "LANGFUSE_SECRET_KEY, and LANGFUSE_HOST in your .env file."
+# Optional Langfuse instrumentation (only if keys are configured)
+langfuse = None
+if settings.langfuse_public_key and settings.langfuse_secret_key:
+    langfuse = Langfuse(
+        public_key=settings.langfuse_public_key,
+        secret_key=settings.langfuse_secret_key,
+        host=settings.langfuse_host,
     )
-logger.info("Langfuse instrumented. Preparing OpenAI agent instrumentation...")
-OpenAIAgentsInstrumentor().instrument()
+    if not langfuse.auth_check():
+        logger.warning(
+            "Langfuse authentication failed. Tracing will be disabled. "
+            "Check LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_HOST in your .env file."
+        )
+        langfuse = None
+    else:
+        logger.info("Langfuse instrumented. Preparing OpenAI agent instrumentation...")
+        OpenAIAgentsInstrumentor().instrument()
+else:
+    logger.info("Langfuse not configured. Tracing disabled.")
 
 
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from fastmcp import Client
 
-from glyx_mcp.server import mcp
+from glyx.mcp.server import mcp
 
 
 @pytest.mark.integration

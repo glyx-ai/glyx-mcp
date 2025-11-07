@@ -50,7 +50,6 @@ def discover_and_register_agents(
                     model: str = "gpt-5",
                     files: str | None = None,
                     read_files: str | None = None,
-                    **kwargs: str,
                 ) -> str:
                     """Dynamically generated agent tool."""
                     await ctx.info(f"Starting {agent_instance.config.agent_key} execution")
@@ -58,7 +57,6 @@ def discover_and_register_agents(
                     task_config = {
                         "prompt": prompt,
                         "model": model,
-                        **kwargs,
                     }
 
                     if files:

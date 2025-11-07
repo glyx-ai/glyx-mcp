@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import logging
+import uuid
 
-from agents import Agent, Runner, function_tool
+from agents import Agent, ModelSettings, Runner, function_tool
 from fastmcp import Context
 from pydantic import BaseModel, Field
 
 from glyx.mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
 from glyx.mcp.models.task import Task
-from glyx.mcp.orchestration.prompts import get_orchestrator_instructions
+from glyx.mcp.orchestration.prompts import get_orchestrator_instructions, get_memory_saver_instructions
 from glyx.mcp.settings import settings
 from glyx.mcp.tools.use_memory import search_memory as search_memory_fn
 from glyx.mcp.tools.use_memory import save_memory as save_memory_fn
@@ -278,6 +279,11 @@ class Orchestrator:
             output = result.final_output
 
             logger.info(f"Orchestration complete. Tool calls: {len(tool_calls)}")
+            await self.ctx.report_progress(progress=90, total=100, message="Saving memories to graph...")
+
+            # FORCE memory saving after orchestration
+            run_id = str(uuid.uuid4())
+            await self._force_memory_save(task=task, output=output, tool_calls=tool_calls, run_id=run_id)
 
             await self.ctx.report_progress(progress=100, total=100, message="Orchestration complete")
             await self.ctx.info("✅ Orchestration completed successfully")
@@ -286,3 +292,64 @@ class Orchestrator:
         except Exception as e:
             logger.error(f"Orchestration failed: {e}")
             return OrchestratorResult(success=False, output="", tool_calls=[], error=str(e))
+
+    async def _force_memory_save(
+        self, task: str, output: str, tool_calls: list[str], run_id: str
+    ) -> None:
+        """Force memory saving with a dedicated agent that MUST call save_memory.
+
+        This ensures every orchestration saves memories to the graph.
+
+        Args:
+            task: Original user task
+            output: Orchestration output
+            tool_calls: List of tools that were called
+            run_id: Unique run identifier
+        """
+        logger.info("Creating memory saver agent with forced tool call")
+        await self.ctx.info("💾 Saving key learnings to memory graph...")
+
+        # Create memory saver agent that MUST call save_memory
+        memory_saver = Agent(
+            name="MemorySaver",
+            instructions=get_memory_saver_instructions(),
+            model=settings.default_orchestrator_model,
+            tools=[save_memory],
+            model_settings=ModelSettings(
+                tool_choice="save_memory",  # FORCE this specific tool
+            ),
+        )
+
+        # Prepare context for memory saver
+        context = f"""
+Task: {task}
+
+Output Summary: {output[:500]}...
+
+Tools Used: {", ".join(tool_calls)}
+
+Your job: Extract and save 1-3 key memories from this orchestration.
+Save architectural decisions, patterns discovered, file locations, technical decisions, or important concepts.
+Call save_memory for EACH distinct memory (architecture, integration, code style, etc.).
+"""
+
+        try:
+            # Run memory saver - it MUST call save_memory due to tool_choice
+            logger.info("Running memory saver agent (forced tool call)")
+            result = Runner.run_streamed(memory_saver, input=context)
+
+            # Process stream events to track memory saves
+            memory_count = 0
+            async for event in result.stream_events():
+                if event.type == "run_item_stream_event":
+                    item = event.item
+                    if item.type == "tool_call_item" and hasattr(item.raw_item, "name") and item.raw_item.name == "save_memory":  # type: ignore[union-attr]
+                        memory_count += 1
+                        logger.info(f"Memory save #{memory_count} triggered")
+
+            logger.info(f"Memory saver completed. Saved {memory_count} memories.")
+            await self.ctx.info(f"💾 Saved {memory_count} memories to graph")
+
+        except Exception as e:
+            logger.error(f"Memory saving failed: {e}")
+            await self.ctx.warning(f"⚠️ Memory saving encountered an error: {e}")
