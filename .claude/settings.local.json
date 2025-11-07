@@ -16,7 +16,8 @@
       "Bash(mcp list-tools:*)",
       "mcp__glyx-mcp__orchestrate",
       "WebFetch(domain:github.com)",
-      "mcp__glyx-mcp__search_memory"
+      "mcp__glyx-mcp__search_memory",
+      "Bash(docker exec:*)"
     ],
     "additionalDirectories": [
       "/home/parallels/glyx-mcp-tasks/"

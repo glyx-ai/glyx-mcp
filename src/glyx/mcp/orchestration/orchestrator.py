@@ -8,15 +8,15 @@ from agents import Agent, Runner, function_tool
 from fastmcp import Context
 from pydantic import BaseModel, Field
 
-from glyx_mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
-from glyx_mcp.models.task import Task
-from glyx_mcp.orchestration.prompts import get_orchestrator_instructions
-from glyx_mcp.settings import settings
-from glyx_mcp.tools.use_memory import search_memory as search_memory_fn
-from glyx_mcp.tools.use_memory import save_memory as save_memory_fn
-from glyx_mcp_tasks.tools.task_tools import assign_task as assign_task_fn
-from glyx_mcp_tasks.tools.task_tools import create_task as create_task_fn
-from glyx_mcp_tasks.tools.task_tools import update_task as update_task_fn
+from glyx.mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
+from glyx.mcp.models.task import Task
+from glyx.mcp.orchestration.prompts import get_orchestrator_instructions
+from glyx.mcp.settings import settings
+from glyx.mcp.tools.use_memory import search_memory as search_memory_fn
+from glyx.mcp.tools.use_memory import save_memory as save_memory_fn
+from glyx.tasks.tools.task_tools import assign_task as assign_task_fn
+from glyx.tasks.tools.task_tools import create_task as create_task_fn
+from glyx.tasks.tools.task_tools import update_task as update_task_fn
 
 logger = logging.getLogger(__name__)
 

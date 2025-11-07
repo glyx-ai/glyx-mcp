@@ -1,7 +1,7 @@
 [project]
-name = "glyx-mcp"
+name = "glyx"
 version = "0.1.0"
-description = "FastMCP server for coding agents with Aider integration"
+description = "Composable AI agent framework with FastMCP integration"
 readme = "README.md"
 authors = [
     { name = "htelsiz", email = "hakantelsiz@utexas.edu" }
@@ -16,7 +16,6 @@ dependencies = [
     "openai-agents>=0.4.2",
     "openinference-instrumentation-openai-agents>=1.3.0",
     "mem0ai>=1.0.0",
-    "glyx-mcp-tasks @ file:///home/parallels/glyx-mcp-tasks",
     "shot-scraper>=1.8",
 ]
 
@@ -30,7 +29,8 @@ dev = [
 ]
 
 [project.scripts]
-glyx-mcp = "glyx_mcp.server:main"
+glyx-mcp = "glyx.mcp.server:main"
+glyx-tasks = "glyx.tasks.server:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

@@ -9,18 +9,17 @@ from fastmcp import FastMCP, Context
 from fastmcp.utilities.logging import get_logger
 from langfuse import Langfuse
 
-from glyx_mcp.orchestration.orchestrator import Orchestrator
-from glyx_mcp.settings import settings
-from glyx_mcp.tools.interact_with_user import ask_user
-from glyx_mcp.tools.use_aider import use_aider
-from glyx_mcp.tools.use_grok import use_grok
-from glyx_mcp.tools.use_memory import (
+from pathlib import Path
+
+from glyx.core.registry import discover_and_register_agents
+from glyx.mcp.orchestration.orchestrator import Orchestrator
+from glyx.mcp.settings import settings
+from glyx.mcp.tools.interact_with_user import ask_user
+from glyx.mcp.tools.use_memory import (
     save_memory,
     search_memory,
 )
-from glyx_mcp.tools.use_opencode import use_opencode
-from glyx_mcp.tools.use_shot_scraper import use_shot_scraper
-from glyx_mcp_tasks.server import mcp as tasks_mcp
+from glyx.tasks.server import mcp as tasks_mcp
 from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 
 
@@ -60,11 +59,13 @@ mcp = FastMCP("glyx-mcp")
 
 # Register tools with MCP server
 logger.info("Initializing MCP tools...")
+
+# Auto-discover and register agents from JSON configs
+agents_dir = Path(__file__).parent.parent.parent.parent / "agents"
+discover_and_register_agents(mcp, agents_dir)
+
+# Register non-agent tools manually
 mcp.tool(ask_user)
-mcp.tool(use_aider)
-mcp.tool(use_grok)
-mcp.tool(use_opencode)
-mcp.tool(use_shot_scraper)
 mcp.tool(search_memory)
 mcp.tool(save_memory)
 

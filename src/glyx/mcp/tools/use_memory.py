@@ -3,16 +3,22 @@
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 from typing import Annotated, Literal, Optional
 
 from mem0 import MemoryClient
 from pydantic import Field
 
-from glyx_mcp.settings import settings
+from glyx.mcp.settings import settings
 
 logger = logging.getLogger(__name__)
 
-mem0_client = MemoryClient(api_key=settings.mem0_api_key) if settings.mem0_api_key else None
+
+@lru_cache(maxsize=1)
+def _get_mem0_client() -> MemoryClient:
+    """Lazy initialize Mem0 client on first use."""
+    logger.info("Initializing Mem0 client...")
+    return MemoryClient(api_key=settings.mem0_api_key)
 
 
 # Custom categories for coding project memory
@@ -44,16 +50,12 @@ def search_memory(
     """
     logger.info(f"search_memory called with query={query}, limit={limit}, user_id={user_id}")
 
-    if not mem0_client:
-        logger.warning("Memory feature not available - MEM0_API_KEY not configured")
-        return "Memory feature not available - MEM0_API_KEY not configured"
-
     # Build filters dict with user_id (required)
     filter_dict = {"user_id": user_id}
     logger.debug(f"Calling mem0_client.search with filters={filter_dict}")
 
     # Call mem0 search
-    memories = mem0_client.search(
+    memories = _get_mem0_client().search(
         query=query,
         filters=filter_dict,
     )
@@ -89,10 +91,6 @@ def save_memory(
     """
     logger.info(f"save_memory called: content={content[:100]}..., agent_id={agent_id}, category={category}")
 
-    if not mem0_client:
-        logger.warning("Memory feature not available - MEM0_API_KEY not configured")
-        return "Memory feature not available - MEM0_API_KEY not configured"
-
     # Generate timestamp automatically
     import time
     timestamp = int(time.time())
@@ -119,7 +117,7 @@ def save_memory(
         memory_dict["metadata"] = metadata_dict
 
     logger.debug(f"Calling mem0_client.add with enable_graph=True")
-    result = mem0_client.add(enable_graph=True, **memory_dict)
+    result = _get_mem0_client().add(enable_graph=True, **memory_dict)
 
     response = f"Memory saved: {result}"
     logger.info(f"save_memory returning: {response}")

@@ -3,12 +3,16 @@ services:
     labels:
       - "glyx-mcp"
     build:
-      context: ..
-      dockerfile: glyx-mcp/Dockerfile
-    image: glyx-mcp:latest
+      context: .
+      dockerfile: Dockerfile
+      network: host
+    image: glyx:latest
     container_name: glyx-mcp-server
     stdin_open: true
     tty: true
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     env_file:
       - .env
     volumes:
