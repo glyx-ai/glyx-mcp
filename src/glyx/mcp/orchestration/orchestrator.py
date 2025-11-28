@@ -10,7 +10,7 @@ from fastmcp import Context
 from pydantic import BaseModel, Field
 
 from glyx.mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
-from glyx.mcp.models.task import Task
+from glyx.tasks.models.task import Task
 from glyx.mcp.orchestration.prompts import get_orchestrator_instructions, get_memory_saver_instructions
 from glyx.mcp.settings import settings
 from glyx.mcp.tools.use_memory import search_memory as search_memory_fn

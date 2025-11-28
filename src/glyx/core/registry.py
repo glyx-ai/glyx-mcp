@@ -6,10 +6,12 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from fastmcp import Context
+
 from glyx.core.agent import ComposableAgent
 
 if TYPE_CHECKING:
-    from fastmcp import Context, FastMCP
+    from fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
 

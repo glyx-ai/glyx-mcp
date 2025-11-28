@@ -17,7 +17,19 @@
       "mcp__glyx-mcp__orchestrate",
       "WebFetch(domain:github.com)",
       "mcp__glyx-mcp__search_memory",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(find:*)",
+      "Bash(python3:*)",
+      "mcp__zen__chat",
+      "WebFetch(domain:gofastmcp.com)",
+      "WebFetch(domain:cursor.com)",
+      "WebSearch",
+      "Bash(cursor --help:*)",
+      "WebFetch(domain:www.datacamp.com)",
+      "Bash(cursor agent:*)",
+      "Bash(echo:*)",
+      "Bash(cursor-agent:*)",
+      "Bash(uv run:*)"
     ],
     "additionalDirectories": [
       "/home/parallels/glyx-mcp-tasks/"
