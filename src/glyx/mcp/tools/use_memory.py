@@ -50,15 +50,16 @@ def search_memory(
     """
     logger.info(f"search_memory called with query={query}, limit={limit}, user_id={user_id}")
 
-    # Build filters dict with user_id (required)
-    filter_dict = {"user_id": user_id}
+    filter_dict = {
+        k: v for k, v in {
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "category": category,
+        }.items() if v is not None
+    }
     logger.debug(f"Calling mem0_client.search with filters={filter_dict}")
 
-    # Call mem0 search
-    memories = _get_mem0_client().search(
-        query=query,
-        filters=filter_dict,
-    )
+    memories = _get_mem0_client().search(query=query, filters=filter_dict)
 
     import json
     result = json.dumps(memories)

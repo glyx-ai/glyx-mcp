@@ -21,6 +21,8 @@ from glyx.tasks.tools.task_tools import update_task as update_task_fn
 
 logger = logging.getLogger(__name__)
 
+# Realtime broadcasting
+from glyx.mcp.realtime import broadcast_event
 # Generate task schema once at module load
 TASK_JSON_SCHEMA = Task.model_json_schema()
 
@@ -241,6 +243,7 @@ class Orchestrator:
             OrchestratorResult with final output
         """
         try:
+            await broadcast_event("orchestrator.start", {"task_preview": task[:200]})
             await self.ctx.report_progress(progress=0, total=100, message="Starting orchestration...")
             await self.ctx.info(f"🎯 Orchestrating task: {task}")
 
@@ -266,6 +269,7 @@ class Orchestrator:
                         tool_calls.append(tool_name)
                         logger.info(f"Tool called: {tool_name}")
                         await self.ctx.info(f"🔧 Calling agent: {tool_name}")
+                        await broadcast_event("orchestrator.tool_call", {"tool": tool_name})
                     elif item.type == "message_output_item":
                         logger.info(f"Message output received")
 
@@ -274,12 +278,14 @@ class Orchestrator:
                     agent_updates.append(agent_name)
                     logger.info(f"Agent updated: {agent_name}")
                     await self.ctx.info(f"🤖 Agent: {agent_name}")
+                    await broadcast_event("orchestrator.agent_updated", {"agent": agent_name})
 
             # Get final output (no await needed - already consumed stream)
             output = result.final_output
 
             logger.info(f"Orchestration complete. Tool calls: {len(tool_calls)}")
             await self.ctx.report_progress(progress=90, total=100, message="Saving memories to graph...")
+            await broadcast_event("orchestrator.complete", {"tool_calls": tool_calls, "agent_updates": agent_updates})
 
             # FORCE memory saving after orchestration
             run_id = str(uuid.uuid4())
@@ -291,6 +297,7 @@ class Orchestrator:
             return OrchestratorResult(success=True, output=output, tool_calls=tool_calls, error=None)
         except Exception as e:
             logger.error(f"Orchestration failed: {e}")
+            await broadcast_event("orchestrator.error", {"error": str(e)})
             return OrchestratorResult(success=False, output="", tool_calls=[], error=str(e))
 
     async def _force_memory_save(
@@ -349,7 +356,9 @@ Call save_memory for EACH distinct memory (architecture, integration, code style
 
             logger.info(f"Memory saver completed. Saved {memory_count} memories.")
             await self.ctx.info(f"💾 Saved {memory_count} memories to graph")
+            await broadcast_event("orchestrator.memory_saver.complete", {"saved": memory_count})
 
         except Exception as e:
             logger.error(f"Memory saving failed: {e}")
             await self.ctx.warning(f"⚠️ Memory saving encountered an error: {e}")
+            await broadcast_event("orchestrator.memory_saver.error", {"error": str(e)})

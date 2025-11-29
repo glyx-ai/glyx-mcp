@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
+# Realtime broadcasting
+from glyx.mcp.realtime import broadcast_event
 
 
 # Custom Exceptions
@@ -170,34 +172,69 @@ class ComposableAgent:
 
         logger.info(f"[AGENT CMD] Executing: {' '.join(cmd)}")
 
-        subprocess_start = time()
-        logger.info(f"[AGENT SUBPROCESS] Creating subprocess...")
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.DEVNULL,  # Close stdin to prevent hanging
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        logger.info(f"[AGENT SUBPROCESS] Created in {time() - subprocess_start:.2f}s, waiting for output...")
-
-        communicate_start = time()
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=timeout
-        )
-        logger.info(f"[AGENT COMMUNICATE] Done in {time() - communicate_start:.2f}s")
-
-        execution_time = time() - start_time
-
-        result = AgentResult(
-            stdout=stdout.decode() if stdout else "",
-            stderr=stderr.decode() if stderr else "",
-            exit_code=process.returncode if process.returncode is not None else -1,
-            timed_out=False,
-            execution_time=execution_time,
-            command=cmd
+        await broadcast_event(
+            "agent.start",
+            {
+                "agent_key": self.config.agent_key,
+                "command": cmd,
+                "timeout_s": timeout,
+            },
         )
 
-        logger.info(f"[AGENT RESULT] Completed in {execution_time:.2f}s (exit={result.exit_code}, stdout={len(result.stdout)} bytes, stderr={len(result.stderr)} bytes)")
+        try:
+            subprocess_start = time()
+            logger.info(f"[AGENT SUBPROCESS] Creating subprocess...")
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.DEVNULL,  # Close stdin to prevent hanging
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            logger.info(f"[AGENT SUBPROCESS] Created in {time() - subprocess_start:.2f}s, waiting for output...")
 
-        return result
+            communicate_start = time()
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=timeout
+            )
+            logger.info(f"[AGENT COMMUNICATE] Done in {time() - communicate_start:.2f}s")
+
+            execution_time = time() - start_time
+
+            result = AgentResult(
+                stdout=stdout.decode() if stdout else "",
+                stderr=stderr.decode() if stderr else "",
+                exit_code=process.returncode if process.returncode is not None else -1,
+                timed_out=False,
+                execution_time=execution_time,
+                command=cmd
+            )
+
+            logger.info(
+                f"[AGENT RESULT] Completed in {execution_time:.2f}s (exit={result.exit_code}, stdout={len(result.stdout)} bytes, stderr={len(result.stderr)} bytes)"
+            )
+
+            await broadcast_event(
+                "agent.finish",
+                {
+                    "agent_key": self.config.agent_key,
+                    "exit_code": result.exit_code,
+                    "execution_time_s": execution_time,
+                    "stdout_bytes": len(result.stdout),
+                    "stderr_bytes": len(result.stderr),
+                },
+            )
+
+            return result
+        except asyncio.TimeoutError as e:
+            await broadcast_event(
+                "agent.timeout",
+                {"agent_key": self.config.agent_key, "timeout_s": timeout, "command": cmd},
+            )
+            raise
+        except Exception as e:
+            await broadcast_event(
+                "agent.error",
+                {"agent_key": self.config.agent_key, "error": str(e), "command": cmd},
+            )
+            raise

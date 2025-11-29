@@ -10,6 +10,11 @@ from fastmcp.utilities.logging import get_logger
 from langfuse import Langfuse
 
 from pathlib import Path
+import asyncio
+from fastapi import FastAPI, WebSocket
+import uvicorn
+
+from glyx.mcp.realtime import manager as ws_manager
 
 from glyx.core.registry import discover_and_register_agents
 from glyx.mcp.orchestration.orchestrator import Orchestrator
@@ -18,6 +23,10 @@ from glyx.mcp.tools.interact_with_user import ask_user
 from glyx.mcp.tools.use_memory import (
     save_memory,
     search_memory,
+)
+from glyx.mcp.tools.session_tools import (
+    list_sessions,
+    get_session_messages,
 )
 from glyx.tasks.server import mcp as tasks_mcp
 from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
@@ -75,6 +84,8 @@ discover_and_register_agents(mcp, agents_dir)
 mcp.tool(ask_user)
 mcp.tool(search_memory)
 mcp.tool(save_memory)
+mcp.tool(list_sessions)
+mcp.tool(get_session_messages)
 
 # Mount task tracking server
 logger.info("Mounting task tracking server...")
@@ -109,9 +120,53 @@ async def orchestrate(
 
 
 def main() -> None:
-    """Run the FastMCP server."""
+    """Run the FastMCP server (stdio mode for Claude Code)."""
     mcp.run()
 
 
+async def _run_ws_server(host: str = "0.0.0.0", port: int = 8001) -> None:
+    """Run a lightweight FastAPI app for WebSocket realtime events."""
+    app = FastAPI()
+
+    @app.get("/healthz")
+    async def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket) -> None:
+        await ws_manager.connect(websocket)
+        try:
+            # Consume incoming messages to keep the connection alive; ignore content.
+            while True:
+                await websocket.receive_text()
+        except Exception:
+            # Normal disconnect / network error
+            pass
+        finally:
+            await ws_manager.disconnect(websocket)
+
+    config = uvicorn.Config(app=app, host=host, port=port, log_level="info", loop="asyncio")
+    server = uvicorn.Server(config)
+    logger.info(f"Starting WebSocket server on ws://{host}:{port}/ws")
+    await server.serve()
+
+
+async def main_http() -> None:
+    """Run HTTP MCP server and a companion WebSocket server for realtime events."""
+    await asyncio.gather(
+        mcp.run_http_async(
+            transport="streamable-http",
+            host="0.0.0.0",
+            port=8000,
+        ),
+        _run_ws_server(host="0.0.0.0", port=8001),
+    )
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--http":
+        import asyncio
+        asyncio.run(main_http())
+    else:
+        main()

@@ -144,7 +144,7 @@ class ComposableAgent:
         file_path = config_dir / f"{key.value}.json"
         return cls.from_file(file_path)
 
-    async def execute(self, task_config: dict[str, Any], timeout: int = 30) -> AgentResult:
+    async def execute(self, task_config: dict[str, Any], timeout: int = 30, ctx=None) -> AgentResult:
         """Parse args and execute command, returning structured result."""
         start_time = time()
         logger.info(f"[AGENT EXECUTE] Starting execution for {self.config.agent_key}")
@@ -174,24 +174,52 @@ class ComposableAgent:
         logger.info(f"[AGENT SUBPROCESS] Creating subprocess...")
         process = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.DEVNULL,  # Close stdin to prevent hanging
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
         logger.info(f"[AGENT SUBPROCESS] Created in {time() - subprocess_start:.2f}s, waiting for output...")
 
+        stdout_lines = []
+        stderr_lines = []
+
+        async def read_stream(stream, lines_list, is_stderr=False):
+            """Read stream line-by-line and emit via ctx.info()."""
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                decoded = line.decode().rstrip()
+                lines_list.append(decoded)
+                if ctx and decoded.strip():
+                    try:
+                        prefix = "stderr: " if is_stderr else ""
+                        await ctx.info(f"{prefix}{decoded}")
+                    except Exception as e:
+                        logger.warning(f"Failed to emit progress: {e}")
+
         communicate_start = time()
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=timeout
-        )
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    read_stream(process.stdout, stdout_lines, is_stderr=False),
+                    read_stream(process.stderr, stderr_lines, is_stderr=True),
+                    process.wait()
+                ),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            logger.warning(f"[AGENT TIMEOUT] Process killed after {timeout}s")
+
         logger.info(f"[AGENT COMMUNICATE] Done in {time() - communicate_start:.2f}s")
 
         execution_time = time() - start_time
 
         result = AgentResult(
-            stdout=stdout.decode() if stdout else "",
-            stderr=stderr.decode() if stderr else "",
+            stdout="\n".join(stdout_lines),
+            stderr="\n".join(stderr_lines),
             exit_code=process.returncode if process.returncode is not None else -1,
             timed_out=False,
             execution_time=execution_time,
