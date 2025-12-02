@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import uuid
 from pathlib import Path
@@ -16,8 +17,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Session database location
-SESSION_DB = Path("glyx_sessions.db")
+# Session database location - use /tmp for cloud environments
+SESSION_DB = Path(os.environ.get("GLYX_SESSION_DB", "/tmp/glyx_sessions.db"))
 
 
 @function_tool
