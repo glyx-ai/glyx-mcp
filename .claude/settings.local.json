@@ -32,7 +32,10 @@
       "Bash(uv run:*)",
       "mcp__zen__debug",
       "mcp__zen__apilookup",
-      "WebFetch(domain:app.mem0.ai)"
+      "WebFetch(domain:app.mem0.ai)",
+      "Bash(gh pr view:*)",
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)"
     ],
     "additionalDirectories": [
       "/home/parallels/glyx-mcp-tasks/"
