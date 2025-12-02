@@ -12,9 +12,14 @@ from langfuse import Langfuse
 from pathlib import Path
 import asyncio
 from fastapi import FastAPI, WebSocket
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 import uvicorn
+from datetime import datetime
+import json
 
 from glyx.mcp.realtime import manager as ws_manager
+from glyx.core.agent import ComposableAgent, AgentKey
 
 from glyx.core.registry import discover_and_register_agents
 from glyx.mcp.orchestration.orchestrator import Orchestrator
@@ -124,13 +129,50 @@ def main() -> None:
     mcp.run()
 
 
+class StreamCursorRequest(BaseModel):
+    """Request model for streaming cursor agent."""
+    prompt: str
+    model: str = "gpt-5"
+    conversation_id: str | None = None
+
+
 async def _run_ws_server(host: str = "0.0.0.0", port: int = 8001) -> None:
     """Run a lightweight FastAPI app for WebSocket realtime events."""
+
     app = FastAPI()
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/stream/cursor")
+    async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
+        """Stream cursor agent output with real-time NDJSON events."""
+
+        async def generate():
+            try:
+                prompt = body.prompt
+                model = body.model
+                conversation_id = body.conversation_id
+
+                yield f"data: {json.dumps({'type': 'progress', 'message': '🚀 Starting cursor agent...', 'timestamp': datetime.now().isoformat()})}\n\n"
+
+                agent = ComposableAgent.from_key(AgentKey.CURSOR)
+
+                # Stream events in real-time
+                async for event in agent.execute_stream({
+                    "prompt": prompt,
+                    "model": model,
+                    "force": True,
+                    "output_format": "stream-json",
+                }, timeout=600):
+                    yield f"data: {json.dumps(event)}\n\n"
+
+            except Exception as e:
+                logger.exception("Stream cursor error")
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'timestamp': datetime.now().isoformat()})}\n\n"
+
+        return StreamingResponse(generate(), media_type="text/event-stream")
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:

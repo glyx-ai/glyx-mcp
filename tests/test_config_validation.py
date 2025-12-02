@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from glyx.mcp.composable_agent import AgentConfig, ArgSpec
+from glyx.core.agent import AgentConfig, ArgSpec
 
 
 class TestArgSpecValidation:

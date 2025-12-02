@@ -9,9 +9,12 @@ from agents import Agent, ModelSettings, Runner, function_tool
 from fastmcp import Context
 from pydantic import BaseModel, Field
 
-from glyx.mcp.composable_agent import AgentKey, AgentResult, ComposableAgent
+from glyx.core.agent import AgentKey, AgentResult, ComposableAgent
 from glyx.tasks.models.task import Task
-from glyx.mcp.orchestration.prompts import get_orchestrator_instructions, get_memory_saver_instructions
+from glyx.mcp.orchestration.prompts import (
+    get_orchestrator_instructions,
+    get_memory_saver_instructions,
+)
 from glyx.mcp.settings import settings
 from glyx.mcp.tools.use_memory import search_memory as search_memory_fn
 from glyx.mcp.tools.use_memory import save_memory as save_memory_fn
@@ -23,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Realtime broadcasting
 from glyx.mcp.realtime import broadcast_event
+
 # Generate task schema once at module load
 TASK_JSON_SCHEMA = Task.model_json_schema()
 
@@ -31,8 +35,12 @@ class OrchestratorResult(BaseModel):
     """Result from orchestrator execution."""
 
     success: bool = Field(..., description="Whether orchestration succeeded")
-    output: str = Field(..., description="Final synthesized response from the orchestrator")
-    tool_calls: list[str] = Field(default_factory=list, description="List of tools/agents called during execution")
+    output: str = Field(
+        ..., description="Final synthesized response from the orchestrator"
+    )
+    tool_calls: list[str] = Field(
+        default_factory=list, description="List of tools/agents called during execution"
+    )
     error: str | None = Field(None, description="Error message if orchestration failed")
 
 
@@ -51,12 +59,16 @@ async def use_aider_agent(prompt: str, files: str, model: str = "gpt-5") -> str:
     """
     logger.info(f"Executing Aider agent: prompt={prompt[:100]}, files={files}")
     agent = ComposableAgent.from_key(AgentKey.AIDER)
-    result: AgentResult = await agent.execute({"prompt": prompt, "files": files, "model": model}, timeout=300)
+    result: AgentResult = await agent.execute(
+        {"prompt": prompt, "files": files, "model": model}, timeout=300
+    )
     return result.output
 
 
 @function_tool
-async def use_grok_agent(prompt: str, model: str = "openrouter/x-ai/grok-code-fast-1") -> str:
+async def use_grok_agent(
+    prompt: str, model: str = "openrouter/x-ai/grok-code-fast-1"
+) -> str:
     """Execute Grok for general reasoning and analysis.
 
     Args:
@@ -67,6 +79,7 @@ async def use_grok_agent(prompt: str, model: str = "openrouter/x-ai/grok-code-fa
         Result from Grok execution
     """
     import time
+
     start = time.time()
     logger.info(f"[GROK START] Executing Grok agent: prompt={prompt[:100]}")
 
@@ -76,11 +89,17 @@ async def use_grok_agent(prompt: str, model: str = "openrouter/x-ai/grok-code-fa
 
     execute_start = time.time()
     logger.info(f"[GROK EXECUTE START] Calling agent.execute with timeout=60")
-    result: AgentResult = await agent.execute({"prompt": prompt, "model": model}, timeout=60)
-    logger.info(f"[GROK EXECUTE DONE] Took {time.time() - execute_start:.2f}s, exit_code={result.exit_code}")
+    result: AgentResult = await agent.execute(
+        {"prompt": prompt, "model": model}, timeout=60
+    )
+    logger.info(
+        f"[GROK EXECUTE DONE] Took {time.time() - execute_start:.2f}s, exit_code={result.exit_code}"
+    )
 
     output_len = len(result.output)
-    logger.info(f"[GROK COMPLETE] Total time: {time.time() - start:.2f}s, output length: {output_len}")
+    logger.info(
+        f"[GROK COMPLETE] Total time: {time.time() - start:.2f}s, output length: {output_len}"
+    )
 
     return result.output
 
@@ -98,12 +117,16 @@ async def use_codex_agent(prompt: str, model: str = "gpt-5") -> str:
     """
     logger.info(f"Executing Codex agent: prompt={prompt[:100]}")
     agent = ComposableAgent.from_key(AgentKey.CODEX)
-    result: AgentResult = await agent.execute({"prompt": prompt, "model": model}, timeout=300)
+    result: AgentResult = await agent.execute(
+        {"prompt": prompt, "model": model}, timeout=300
+    )
     return result.output
 
 
 @function_tool
-async def use_claude_agent(prompt: str, model: str = "claude-sonnet-4-20250514", max_turns: int = 30) -> str:
+async def use_claude_agent(
+    prompt: str, model: str = "claude-sonnet-4-20250514", max_turns: int = 30
+) -> str:
     """Execute Claude Code for complex coding tasks.
 
     Args:
@@ -116,7 +139,9 @@ async def use_claude_agent(prompt: str, model: str = "claude-sonnet-4-20250514",
     """
     logger.info(f"Executing Claude agent: prompt={prompt[:100]}")
     agent = ComposableAgent.from_key(AgentKey.CLAUDE)
-    result: AgentResult = await agent.execute({"prompt": prompt, "model": model, "max_turns": max_turns}, timeout=600)
+    result: AgentResult = await agent.execute(
+        {"prompt": prompt, "model": model, "max_turns": max_turns}, timeout=600
+    )
     return result.output
 
 
@@ -164,11 +189,14 @@ class Orchestrator:
 
         # Format instructions with task schema
         import json
+
         task_schema_str = json.dumps(TASK_JSON_SCHEMA, indent=2)
 
         # Create ask_user tool with access to ctx
         @function_tool
-        async def ask_user(question: str, expected_format: str = "free-form text") -> str:
+        async def ask_user(
+            question: str, expected_format: str = "free-form text"
+        ) -> str:
             """Ask the user a clarifying question and wait for their response.
 
             Use this when you need additional information to properly orchestrate the task.
@@ -192,21 +220,29 @@ class Orchestrator:
 
             # Simple string response type
             class UserResponse(BaseModel):
-                answer: str = Field(..., description=f"Your response ({expected_format})")
+                answer: str = Field(
+                    ..., description=f"Your response ({expected_format})"
+                )
 
             try:
-                response = await ctx.elicit(message=full_message, response_type=UserResponse)
+                response = await ctx.elicit(
+                    message=full_message, response_type=UserResponse
+                )
 
                 if hasattr(response, "data") and hasattr(response.data, "answer"):
                     answer = response.data.answer
                     logger.info(f"User answered: {answer}")
                     return answer
                 else:
-                    logger.warning("User declined or cancelled the question - returning structured prompt for AskUserQuestion")
+                    logger.warning(
+                        "User declined or cancelled the question - returning structured prompt for AskUserQuestion"
+                    )
                     # Return a structured signal that tells the orchestrator to format this as an AskUserQuestion request
                     return f"[NEEDS_STRUCTURED_QUESTION]\nQuestion: {question}\nExpected Format: {expected_format}"
             except Exception as e:
-                logger.warning(f"Elicitation failed: {e} - returning structured prompt for AskUserQuestion")
+                logger.warning(
+                    f"Elicitation failed: {e} - returning structured prompt for AskUserQuestion"
+                )
                 # Return a structured signal that tells the orchestrator to format this as an AskUserQuestion request
                 return f"[NEEDS_STRUCTURED_QUESTION]\nQuestion: {question}\nExpected Format: {expected_format}"
 
@@ -244,7 +280,9 @@ class Orchestrator:
         """
         try:
             await broadcast_event("orchestrator.start", {"task_preview": task[:200]})
-            await self.ctx.report_progress(progress=0, total=100, message="Starting orchestration...")
+            await self.ctx.report_progress(
+                progress=0, total=100, message="Starting orchestration..."
+            )
             await self.ctx.info(f"🎯 Orchestrating task: {task}")
 
             logger.info(f"Orchestrating task: {task}")
@@ -269,7 +307,9 @@ class Orchestrator:
                         tool_calls.append(tool_name)
                         logger.info(f"Tool called: {tool_name}")
                         await self.ctx.info(f"🔧 Calling agent: {tool_name}")
-                        await broadcast_event("orchestrator.tool_call", {"tool": tool_name})
+                        await broadcast_event(
+                            "orchestrator.tool_call", {"tool": tool_name}
+                        )
                     elif item.type == "message_output_item":
                         logger.info(f"Message output received")
 
@@ -278,27 +318,42 @@ class Orchestrator:
                     agent_updates.append(agent_name)
                     logger.info(f"Agent updated: {agent_name}")
                     await self.ctx.info(f"🤖 Agent: {agent_name}")
-                    await broadcast_event("orchestrator.agent_updated", {"agent": agent_name})
+                    await broadcast_event(
+                        "orchestrator.agent_updated", {"agent": agent_name}
+                    )
 
             # Get final output (no await needed - already consumed stream)
             output = result.final_output
 
             logger.info(f"Orchestration complete. Tool calls: {len(tool_calls)}")
-            await self.ctx.report_progress(progress=90, total=100, message="Saving memories to graph...")
-            await broadcast_event("orchestrator.complete", {"tool_calls": tool_calls, "agent_updates": agent_updates})
+            await self.ctx.report_progress(
+                progress=90, total=100, message="Saving memories to graph..."
+            )
+            await broadcast_event(
+                "orchestrator.complete",
+                {"tool_calls": tool_calls, "agent_updates": agent_updates},
+            )
 
             # FORCE memory saving after orchestration
             run_id = str(uuid.uuid4())
-            await self._force_memory_save(task=task, output=output, tool_calls=tool_calls, run_id=run_id)
+            await self._force_memory_save(
+                task=task, output=output, tool_calls=tool_calls, run_id=run_id
+            )
 
-            await self.ctx.report_progress(progress=100, total=100, message="Orchestration complete")
+            await self.ctx.report_progress(
+                progress=100, total=100, message="Orchestration complete"
+            )
             await self.ctx.info("✅ Orchestration completed successfully")
 
-            return OrchestratorResult(success=True, output=output, tool_calls=tool_calls, error=None)
+            return OrchestratorResult(
+                success=True, output=output, tool_calls=tool_calls, error=None
+            )
         except Exception as e:
             logger.error(f"Orchestration failed: {e}")
             await broadcast_event("orchestrator.error", {"error": str(e)})
-            return OrchestratorResult(success=False, output="", tool_calls=[], error=str(e))
+            return OrchestratorResult(
+                success=False, output="", tool_calls=[], error=str(e)
+            )
 
     async def _force_memory_save(
         self, task: str, output: str, tool_calls: list[str], run_id: str
@@ -356,7 +411,9 @@ Call save_memory for EACH distinct memory (architecture, integration, code style
 
             logger.info(f"Memory saver completed. Saved {memory_count} memories.")
             await self.ctx.info(f"💾 Saved {memory_count} memories to graph")
-            await broadcast_event("orchestrator.memory_saver.complete", {"saved": memory_count})
+            await broadcast_event(
+                "orchestrator.memory_saver.complete", {"saved": memory_count}
+            )
 
         except Exception as e:
             logger.error(f"Memory saving failed: {e}")

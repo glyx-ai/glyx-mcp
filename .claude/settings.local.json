@@ -29,7 +29,10 @@
       "Bash(cursor agent:*)",
       "Bash(echo:*)",
       "Bash(cursor-agent:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "mcp__zen__debug",
+      "mcp__zen__apilookup",
+      "WebFetch(domain:app.mem0.ai)"
     ],
     "additionalDirectories": [
       "/home/parallels/glyx-mcp-tasks/"

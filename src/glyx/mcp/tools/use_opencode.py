@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastmcp import Context
 
-from glyx.mcp.composable_agent import AgentKey, ComposableAgent
+from glyx.core.agent import AgentKey, ComposableAgent
 
 
 async def use_opencode(

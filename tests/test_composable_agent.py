@@ -6,12 +6,41 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from glyx.mcp.composable_agent import (
+from glyx.core.agent import (
     AgentConfig,
     AgentResult,
     ArgSpec,
     ComposableAgent,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_broadcast_event():
+    """Auto-mock broadcast_event for all tests."""
+    with patch('glyx.core.agent.broadcast_event', new_callable=AsyncMock):
+        yield
+
+
+def create_mock_process(stdout_lines: list[bytes] | None = None, stderr_lines: list[bytes] | None = None, returncode: int = 0):
+    """Create a mock process with proper async stream mocking."""
+    stdout_lines = stdout_lines or []
+    stderr_lines = stderr_lines or []
+
+    mock_process = MagicMock()
+    mock_process.returncode = returncode
+    mock_process.wait = AsyncMock(return_value=returncode)
+
+    # Mock stdout.readline() to return lines then empty
+    stdout_iter = iter(stdout_lines + [b""])
+    mock_process.stdout = MagicMock()
+    mock_process.stdout.readline = AsyncMock(side_effect=lambda: next(stdout_iter, b""))
+
+    # Mock stderr.readline() to return lines then empty
+    stderr_iter = iter(stderr_lines + [b""])
+    mock_process.stderr = MagicMock()
+    mock_process.stderr.readline = AsyncMock(side_effect=lambda: next(stderr_iter, b""))
+
+    return mock_process
 
 
 class TestCommandBuilding:
@@ -35,11 +64,7 @@ class TestCommandBuilding:
         )
 
         agent = ComposableAgent(config)
-
-        # Mock the subprocess execution to capture the command
-        mock_process = MagicMock()
-        mock_process.communicate = AsyncMock(return_value=(b"success", b""))
-        mock_process.returncode = 0
+        mock_process = create_mock_process(stdout_lines=[b"success\n"])
 
         with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
             task_config = {
@@ -79,9 +104,7 @@ class TestCommandBuilding:
         )
 
         agent = ComposableAgent(config)
-        mock_process = MagicMock()
-        mock_process.communicate = AsyncMock(return_value=(b"", b""))
-        mock_process.returncode = 0
+        mock_process = create_mock_process()
 
         with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
             result = await agent.execute({"prompt": "test"}, timeout=10)
@@ -104,9 +127,7 @@ class TestCommandBuilding:
         )
 
         agent = ComposableAgent(config)
-        mock_process = MagicMock()
-        mock_process.communicate = AsyncMock(return_value=(b"", b""))
-        mock_process.returncode = 0
+        mock_process = create_mock_process()
 
         with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
             result = await agent.execute({"message": "hello"}, timeout=10)
@@ -131,9 +152,7 @@ class TestCommandBuilding:
         )
 
         agent = ComposableAgent(config)
-        mock_process = MagicMock()
-        mock_process.communicate = AsyncMock(return_value=(b"", b""))
-        mock_process.returncode = 0
+        mock_process = create_mock_process()
 
         with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
             # Don't provide any config - should use defaults
@@ -159,9 +178,7 @@ class TestCommandBuilding:
         )
 
         agent = ComposableAgent(config)
-        mock_process = MagicMock()
-        mock_process.communicate = AsyncMock(return_value=(b"", b""))
-        mock_process.returncode = 0
+        mock_process = create_mock_process()
 
         with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
             result = await agent.execute({}, timeout=10)
@@ -184,9 +201,7 @@ class TestCommandBuilding:
         )
 
         agent = ComposableAgent(config)
-        mock_process = MagicMock()
-        mock_process.communicate = AsyncMock(return_value=(b"", b""))
-        mock_process.returncode = 0
+        mock_process = create_mock_process()
 
         with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
             result = await agent.execute({"verbose": True}, timeout=10)
