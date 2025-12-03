@@ -157,6 +157,27 @@ class ComposableAgent:
         file_path = config_dir / f"{key.value}.json"
         return cls.from_file(file_path)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ComposableAgent":
+        """Create agent from dictionary (e.g., Supabase row).
+
+        Args:
+            data: Dictionary with agent_key, command, args, etc.
+
+        Returns:
+            ComposableAgent instance.
+        """
+        args = {k: ArgSpec(**v) for k, v in data["args"].items()}
+        config = AgentConfig(
+            agent_key=data["agent_key"],
+            command=data["command"],
+            args=args,
+            description=data.get("description"),
+            version=data.get("version"),
+            capabilities=data.get("capabilities", []),
+        )
+        return cls(config)
+
     async def execute(self, task_config: dict[str, Any], timeout: int = 30, ctx=None) -> AgentResult:
         """Parse args and execute command, returning structured result."""
         start_time = time()

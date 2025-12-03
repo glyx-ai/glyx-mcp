@@ -19,6 +19,7 @@ dependencies = [
     "openinference-instrumentation-openai-agents>=1.3.0",
     "mem0ai>=1.0.0",
     "shot-scraper>=1.8",
+    "supabase>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -33,7 +34,6 @@ dev = [
 [project.scripts]
 glyx-mcp = "glyx.mcp.server:main"
 glyx-mcp-http = "glyx.mcp.server:main_http"
-glyx-tasks = "glyx.tasks.server:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]
