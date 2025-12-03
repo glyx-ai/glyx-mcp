@@ -5,7 +5,7 @@ Composable AI agent framework with a FastMCP server, exposing multiple agent too
 ## Highlights
 
 - **Composable by config**: Add agents via JSON, no code changes
-- **Multiple entrypoints**: `glyx-mcp` (stdio), `glyx-mcp-http` (HTTP + WebSocket), `glyx-tasks` (task tools)
+- **Multiple entrypoints**: `glyx-mcp` (stdio), `glyx-mcp-http` (HTTP + WebSocket)
 - **First-class tools**: Aider for code edits, Grok via OpenRouter, memory/session utilities
 - **Tracing-ready**: Optional Langfuse instrumentation
 - **Typed + tested**: Strict mypy, ruff, pytest
@@ -82,8 +82,7 @@ When running via Docker Compose, `.env` is loaded automatically.
 ## Running modes
 
 - **Stdio (default)**: `glyx-mcp` — best for Claude Code / CLI MCP clients
-- **HTTP**: `glyx-mcp-http` — serves MCP over HTTP (port 8000) and realtime WebSocket events (port 8001)
-- **Tasks server**: `glyx-tasks` — standalone MCP server exposing task tools
+- **HTTP**: `glyx-mcp-http` — serves MCP over HTTP with realtime WebSocket events
 
 Entrypoints are defined in `pyproject.toml`:
 
@@ -91,7 +90,6 @@ Entrypoints are defined in `pyproject.toml`:
 [project.scripts]
 glyx-mcp = "glyx.mcp.server:main"
 glyx-mcp-http = "glyx.mcp.server:main_http"
-glyx-tasks = "glyx.tasks.server:main"
 ```
 
 ---
@@ -103,9 +101,8 @@ glyx-tasks = "glyx.tasks.server:main"
 - **Memory** (`save_memory`, `search_memory`) — lightweight vector memory via `mem0`
 - **Sessions** (`list_sessions`, `get_session_messages`) — conversation history helpers
 - **Orchestrate** (`orchestrate`) — coordinates multiple agents for complex tasks
-- **Tasks** (via `glyx-tasks`) — `create_task`, `assign_task`, `update_task`
 
-See implementations under `src/glyx/mcp/tools/` and `src/glyx/tasks/tools/`.
+See implementations under `src/glyx/mcp/tools/`.
 
 ---
 
@@ -197,6 +194,53 @@ HTTP:
     }
   }
 }
+```
+
+---
+
+## Deployments
+
+| Service | Platform | URL |
+|---------|----------|-----|
+| MCP Server | Fly.io | `https://glyx-mcp.fly.dev` |
+| UI | Vercel | `https://glyx.vercel.app` |
+
+### Deploy to Fly.io
+
+```bash
+# Install flyctl
+curl -L https://fly.io/install.sh | sh
+
+# Login
+fly auth login
+
+# Deploy (uses Dockerfile)
+fly deploy
+```
+
+### MCP Client Configuration (Fly.io)
+
+```json
+{
+  "mcpServers": {
+    "glyx-mcp": {
+      "transport": {
+        "type": "http",
+        "url": "https://glyx-mcp.fly.dev/mcp"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables (Fly.io)
+
+Set secrets via `fly secrets set`:
+
+```bash
+fly secrets set OPENAI_API_KEY=sk-...
+fly secrets set ANTHROPIC_API_KEY=sk-ant-...
+fly secrets set OPENROUTER_API_KEY=sk-or-...
 ```
 
 ---

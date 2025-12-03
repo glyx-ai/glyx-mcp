@@ -20,13 +20,10 @@ ENV PATH="/root/.local/bin:$PATH"
 COPY pyproject.toml ./
 COPY README.md ./
 COPY src/ ./src/
+COPY agents/ ./agents/
 
 # Install Python dependencies
 RUN uv pip install --system -e ".[dev]"
-
-# Install Aider using the official installer
-RUN python3 -m pip install --break-system-packages aider-install && \
-    aider-install
 
 # Install OpenCode CLI
 RUN curl -fsSL https://opencode.ai/install | bash
@@ -35,12 +32,20 @@ ENV PATH="/root/.opencode/bin:$PATH"
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
-# Create .claude directory for credentials mounting
-RUN mkdir -p /root/.claude
+# Install Cursor Agent CLI (Linux x64)
+# The install script creates symlink at ~/.local/bin/cursor-agent
+RUN curl -fsSL https://cursor.com/install | bash && \
+    # Also link to /usr/local/bin for guaranteed PATH availability
+    ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent && \
+    # Verify installation
+    cursor-agent --version || echo "cursor-agent installed"
 
-# Expose MCP server port (if needed for stdio, this is optional)
-# MCP typically uses stdio, but we expose for potential future HTTP transport
-EXPOSE 8000
+# Create directories for credentials
+RUN mkdir -p /root/.claude /root/.cursor-agent
 
-# Set entrypoint to run the MCP server
-ENTRYPOINT ["glyx-mcp"]
+# Cloud Run uses PORT env var
+ENV PORT=8080
+EXPOSE 8080
+
+# Run HTTP server (Cloud Run compatible)
+CMD ["python", "-m", "glyx.mcp.server", "--http"]
