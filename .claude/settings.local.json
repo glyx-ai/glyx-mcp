@@ -71,7 +71,9 @@
       "mcp__supabase__list_tables",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(git push:*)",
+      "Bash(mv:*)"
     ],
     "additionalDirectories": [
       "/home/parallels/glyx-mcp-tasks/"
