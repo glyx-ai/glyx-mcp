@@ -11,17 +11,26 @@ from langfuse import Langfuse
 
 from pathlib import Path
 import asyncio
-from fastapi import FastAPI, WebSocket
+import os
+import json
+from datetime import datetime
+from fastapi import FastAPI, WebSocket, APIRouter, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import uvicorn
-from datetime import datetime
-import json
+from supabase import create_client
 
 from glyx.mcp.websocket_manager import manager as ws_manager
 from glyx.core.agent import ComposableAgent, AgentKey
-
+from glyx.mcp.types import (
+    StreamCursorRequest,
+    AgentResponse,
+    OrganizationCreate,
+    OrganizationResponse,
+    SaveMemoryRequest,
+    SearchMemoryRequest,
+)
 from glyx.core.registry import discover_and_register_agents
 from glyx.mcp.orchestration.orchestrator import Orchestrator
 from glyx.mcp.settings import settings
@@ -136,25 +145,11 @@ def main() -> None:
     mcp.run()
 
 
-class StreamCursorRequest(BaseModel):
-    """Request model for streaming cursor agent."""
-    prompt: str
-    model: str = "gpt-5"
-    conversation_id: str | None = None
-
-
-import os
-
 # Create FastAPI app for additional routes (WebSocket, streaming, health)
 api_app = FastAPI()
 
-api_app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# API router with /api prefix
+api_router = APIRouter(prefix="/api")
 
 
 @api_app.get("/healthz")
@@ -214,23 +209,22 @@ from glyx.core.pipelines import (
     save_feature,
     delete_feature,
 )
-from fastapi import HTTPException
 
 
-@api_app.get("/features")
+@api_router.get("/features")
 async def api_list_features(status: str | None = None) -> list[Feature]:
     """List all features."""
     return list_features(status)
 
 
-@api_app.post("/features")
+@api_router.post("/features")
 async def api_create_feature(body: FeatureCreate) -> Feature:
     """Create a new feature with default pipeline stages."""
     pipeline = Pipeline.create(body)
     return save_feature(pipeline.feature)
 
 
-@api_app.get("/features/{feature_id}")
+@api_router.get("/features/{feature_id}")
 async def api_get_feature(feature_id: str) -> Feature:
     """Get a feature by ID."""
     feature = get_feature(feature_id)
@@ -239,7 +233,7 @@ async def api_get_feature(feature_id: str) -> Feature:
     return feature
 
 
-@api_app.patch("/features/{feature_id}")
+@api_router.patch("/features/{feature_id}")
 async def api_update_feature(feature_id: str, body: FeatureUpdate) -> Feature:
     """Update a feature."""
     feature = get_feature(feature_id)
@@ -249,7 +243,7 @@ async def api_update_feature(feature_id: str, body: FeatureUpdate) -> Feature:
     return save_feature(updated)
 
 
-@api_app.delete("/features/{feature_id}")
+@api_router.delete("/features/{feature_id}")
 async def api_delete_feature(feature_id: str) -> dict[str, str]:
     """Delete a feature."""
     if not delete_feature(feature_id):
@@ -257,17 +251,90 @@ async def api_delete_feature(feature_id: str) -> dict[str, str]:
     return {"status": "deleted"}
 
 
-# Agent API
-class AgentResponse(BaseModel):
-    """Response model for agent info."""
-    name: str
-    model: str
-    description: str
-    capabilities: list[str]
-    status: str
+# Organization API (Supabase-backed)
+DEFAULT_PROJECT_ID = "a0000000-0000-0000-0000-000000000001"
 
 
-@api_app.get("/agents")
+def get_supabase():
+    """Get Supabase client."""
+    url = settings.supabase_url
+    key = settings.supabase_anon_key
+    if not url or not key:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    return create_client(url, key)
+
+
+@api_router.get("/organizations")
+async def api_list_organizations() -> list[OrganizationResponse]:
+    """List all organizations from Supabase."""
+    client = get_supabase()
+    response = client.table("organizations").select("*").eq("project_id", DEFAULT_PROJECT_ID).order("created_at", desc=True).execute()
+    return [OrganizationResponse(**{**row, "id": str(row["id"])}) for row in response.data]
+
+
+@api_router.post("/organizations")
+async def api_create_organization(body: OrganizationCreate) -> OrganizationResponse:
+    """Create a new organization in Supabase."""
+    client = get_supabase()
+    data = {
+        "project_id": DEFAULT_PROJECT_ID,
+        "name": body.name,
+        "description": body.description,
+        "template": body.template,
+        "config": body.config,
+        "status": "draft",
+        "stages": [],
+    }
+    response = client.table("organizations").insert(data).execute()
+    row = response.data[0]
+    return OrganizationResponse(**{**row, "id": str(row["id"])})
+
+
+@api_router.get("/organizations/{org_id}")
+async def api_get_organization(org_id: str) -> OrganizationResponse:
+    """Get an organization by ID."""
+    client = get_supabase()
+    response = client.table("organizations").select("*").eq("id", org_id).single().execute()
+    row = response.data
+    return OrganizationResponse(**{**row, "id": str(row["id"])})
+
+
+@api_router.delete("/organizations/{org_id}")
+async def api_delete_organization(org_id: str) -> dict[str, str]:
+    """Delete an organization."""
+    client = get_supabase()
+    client.table("organizations").delete().eq("id", org_id).execute()
+    return {"status": "deleted"}
+
+
+@api_router.post("/memory/save")
+async def api_save_memory(body: SaveMemoryRequest) -> dict[str, str]:
+    """Save memory via REST endpoint."""
+    run_id = body.run_id or f"dashboard-{int(datetime.now().timestamp())}"
+    result = save_memory(
+        content=body.content,
+        agent_id=body.agent_id,
+        run_id=run_id,
+        category=body.category,  # type: ignore
+        directory_name=body.directory_name,
+    )
+    return {"status": "saved", "result": result}
+
+
+@api_router.post("/memory/search")
+async def api_search_memory(body: SearchMemoryRequest) -> dict[str, list]:
+    """Search memory via REST endpoint."""
+    result = search_memory(
+        query=body.query,
+        category=body.category,  # type: ignore
+        limit=body.limit,
+    )
+    import json
+    memories = json.loads(result) if result else []
+    return {"memories": memories}
+
+
+@api_router.get("/agents")
 async def api_list_agents() -> list[AgentResponse]:
     """List all available agents from JSON configs."""
     agents_path = Path(__file__).parent.parent.parent.parent / "agents"
@@ -293,27 +360,38 @@ async def api_list_agents() -> list[AgentResponse]:
     return result
 
 
-from starlette.applications import Starlette
-from starlette.routing import Mount
+# Include API router after all routes are defined
+api_app.include_router(api_router)
 
 
 async def main_http() -> None:
-    """Run HTTP MCP server with combined API routes (Cloud Run/Fly.io compatible)."""
+    """Run HTTP server with both MCP protocol and REST API."""
     port = int(os.environ.get("PORT", 8080))
     logger.info(f"Starting combined MCP + API server on http://0.0.0.0:{port}")
 
-    # Get the MCP HTTP app (using deprecated method for now - will update to http_app() later)
-    mcp_app = mcp.streamable_http_app()
+    # Create MCP ASGI app with proper path
+    mcp_app = mcp.http_app(path='/mcp')
 
-    # Create combined Starlette app that mounts both MCP and our custom API
-    app = Starlette(
+    # Combine MCP and REST routes with proper lifespan
+    combined_app = FastAPI(
+        title="Glyx MCP + REST API",
         routes=[
-            Mount("/api", app=api_app),  # Our custom routes at /api/*
-            Mount("/", app=mcp_app),     # MCP routes at root
-        ]
+            *mcp_app.routes,    # MCP protocol at /mcp
+            *api_app.routes,    # REST API routes
+        ],
+        lifespan=mcp_app.lifespan,  # Essential for MCP session management
     )
 
-    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
+    # Add CORS middleware to combined app
+    combined_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    config = uvicorn.Config(combined_app, host="0.0.0.0", port=port, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
 

@@ -73,7 +73,16 @@
       "Bash(git commit:*)",
       "Bash(git reset:*)",
       "Bash(git push:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(flyctl status:*)",
+      "Bash(flyctl secrets:*)",
+      "Bash(grep:*)",
+      "mcp__supabase__get_project_url",
+      "mcp__supabase__get_anon_key",
+      "mcp__supabase__execute_sql",
+      "Bash(gh api:*)"
     ],
     "additionalDirectories": [
       "/home/parallels/glyx-mcp-tasks/"

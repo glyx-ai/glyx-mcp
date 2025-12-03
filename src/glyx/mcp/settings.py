@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None
     langfuse_host: str | None = None
 
+    # Supabase Configuration
+    supabase_url: str | None = None
+    supabase_anon_key: str | None = None
+    supabase_service_role_key: str | None = None
+
     # Model Configuration
     default_orchestrator_model: str = "gpt-5"
     default_aider_model: str = "gpt-5"
