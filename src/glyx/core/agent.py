@@ -12,7 +12,7 @@ from typing import Any, AsyncGenerator, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from glyx.mcp.realtime import broadcast_event
+from glyx.mcp.websocket_manager import broadcast_event
 
 logger = logging.getLogger(__name__)
 

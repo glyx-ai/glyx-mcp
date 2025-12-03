@@ -25,7 +25,7 @@ from glyx.tasks.tools.task_tools import update_task as update_task_fn
 logger = logging.getLogger(__name__)
 
 # Realtime broadcasting
-from glyx.mcp.realtime import broadcast_event
+from glyx.mcp.websocket_manager import broadcast_event
 
 # Generate task schema once at module load
 TASK_JSON_SCHEMA = Task.model_json_schema()

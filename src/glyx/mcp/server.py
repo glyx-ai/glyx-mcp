@@ -19,7 +19,7 @@ import uvicorn
 from datetime import datetime
 import json
 
-from glyx.mcp.realtime import manager as ws_manager
+from glyx.mcp.websocket_manager import manager as ws_manager
 from glyx.core.agent import ComposableAgent, AgentKey
 
 from glyx.core.registry import discover_and_register_agents
