@@ -102,12 +102,42 @@ E2E tests require:
 4. Register: `mcp.tool(use_my_agent)` in `server.py`
 5. Test: Add to `tests/test_config_validation.py`
 
+## MCP Integration
+
+### Claude Code/.mcp.json
+
+```jsonc
+{
+  "mcpServers": {
+    "glyx-mcp": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/telsiz/work/glyx-mcp",
+        "fastmcp",
+        "run",
+        "src/glyx/mcp/server.py"
+      ],
+      "env": {
+        "XAI_API_KEY": "...",
+        "OPENAI_API_KEY": "...",
+        "OPENROUTER_API_KEY": "...",
+        "DEFAULT_MODEL": "auto"
+      }
+    }
+  }
+}
+```
+
+### Cursor Integration
+
+The `use_cursor` MCP tool deploys Cursor cloud agents for autonomous coding via the cursor-agent CLI.
+
 ## Misc
 ```bash
 # Run client integration tests (important)
-uv run pytest tests/test_client_integration.py -vv -ss 
+uv run pytest tests/test_client_integration.py -vv -ss
 ```
-- To run logs, execute docker logs glyx-mcp-server
-- Kill all Glyx MCP containers: docker rm -f $(docker ps -aq --filter "name=glyx-mcp")
 - No defensive programming. Prefer a flat, expressive coding style.
 - Style guidelines: we ALWAYS put Python imports at the top of the file.
