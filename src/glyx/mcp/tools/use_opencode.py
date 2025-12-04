@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastmcp import Context
 
-from glyx.core.agent import AgentKey, ComposableAgent
+from glyx_python_sdk import AgentKey, ComposableAgent
 
 
 async def use_opencode(
@@ -30,7 +30,6 @@ async def use_opencode(
         "prompt": prompt,
         "subcmd": subcmd,
     }
-
 
     result = await ComposableAgent.from_key(AgentKey.OPENCODE).execute(task_config, timeout=300)
 

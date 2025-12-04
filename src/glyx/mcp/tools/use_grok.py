@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastmcp import Context
 
-from glyx.core.agent import AgentKey, ComposableAgent
+from glyx_python_sdk import AgentKey, ComposableAgent
 
 
 async def use_grok(

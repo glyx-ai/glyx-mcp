@@ -1,4 +1,4 @@
-from glyx.mcp.models.cursor import (
+from glyx_python_sdk.models.cursor import (
     CursorToolCallEvent,
     FileToolCallArgs,
     McpToolCall,
@@ -7,7 +7,7 @@ from glyx.mcp.models.cursor import (
     ShellToolCallArgs,
     ToolCallPayload,
 )
-from glyx.mcp.models.response import (
+from glyx_python_sdk.models.response import (
     ResponseEventType,
     ResponseFunctionCallArgumentsDeltaEvent,
     ResponseOutputItemAddedEvent,
@@ -131,9 +131,7 @@ def test_summarize_tool_activity_handles_cursor_shell_tool() -> None:
         subtype="started",
         call_id="tool_abc123-xyz",
         tool_call=ToolCallPayload(
-            shell_tool_call=ShellToolCall(
-                args=ShellToolCallArgs(command="ls -la", working_directory="/home")
-            )
+            shell_tool_call=ShellToolCall(args=ShellToolCallArgs(command="ls -la", working_directory="/home"))
         ),
     )
 
@@ -151,9 +149,7 @@ def test_summarize_tool_activity_handles_cursor_read_tool() -> None:
         type="tool_call",
         subtype="started",
         call_id="tool_abc123-xyz",
-        tool_call=ToolCallPayload(
-            read_tool_call=ReadToolCall(args=FileToolCallArgs(path="pyproject.toml"))
-        ),
+        tool_call=ToolCallPayload(read_tool_call=ReadToolCall(args=FileToolCallArgs(path="pyproject.toml"))),
     )
 
     summary = summarize_tool_activity(event)
@@ -186,4 +182,3 @@ def test_summarize_tool_activity_handles_cursor_mcp_tool() -> None:
     assert tool_name == "supabase:execute_sql"
     assert preview is not None
     assert "SELECT 1" in preview
-

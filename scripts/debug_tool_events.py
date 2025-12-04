@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from glyx.core.agent import AgentKey, ComposableAgent
-from glyx.mcp.models.cursor import (
+from glyx.core.models.cursor import (
     BaseCursorEvent,
     CursorToolCallEvent,
     parse_cursor_event,

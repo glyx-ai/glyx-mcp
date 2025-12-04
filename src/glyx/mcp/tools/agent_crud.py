@@ -8,7 +8,7 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-from glyx.core.supabase_loader import (
+from glyx_python_sdk import (
     delete_agent_from_supabase,
     list_agents_from_supabase,
     save_agent_to_supabase,
@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 def create_agent(
     agent_key: Annotated[str, Field(description="Unique key for the agent (e.g., 'my_custom_agent')")],
     command: Annotated[str, Field(description="CLI command to execute (e.g., 'aider', 'cursor-agent')")],
-    args: Annotated[dict[str, dict[str, Any]], Field(description="Argument specifications as a dict of ArgSpec objects")],
+    args: Annotated[
+        dict[str, dict[str, Any]], Field(description="Argument specifications as a dict of ArgSpec objects")
+    ],
     description: Annotated[str | None, Field(description="Human-readable description of the agent")] = None,
     version: Annotated[str | None, Field(description="Version string for the agent")] = None,
     capabilities: Annotated[list[str] | None, Field(description="List of capability tags")] = None,

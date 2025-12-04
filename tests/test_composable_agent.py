@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from glyx.core.agent import (
+from glyx_python_sdk import (
     AgentConfig,
     AgentResult,
     ArgSpec,
@@ -17,11 +17,13 @@ from glyx.core.agent import (
 @pytest.fixture(autouse=True)
 def mock_broadcast_event():
     """Auto-mock broadcast_event for all tests."""
-    with patch('glyx.core.agent.broadcast_event', new_callable=AsyncMock):
+    with patch("glyx_python_sdk.agent.broadcast_event", new_callable=AsyncMock):
         yield
 
 
-def create_mock_process(stdout_lines: list[bytes] | None = None, stderr_lines: list[bytes] | None = None, returncode: int = 0):
+def create_mock_process(
+    stdout_lines: list[bytes] | None = None, stderr_lines: list[bytes] | None = None, returncode: int = 0
+):
     """Create a mock process with proper async stream mocking."""
     stdout_lines = stdout_lines or []
     stderr_lines = stderr_lines or []
@@ -60,18 +62,14 @@ class TestCommandBuilding:
                 "files": ArgSpec(flag="--file", type="string", required=True),
                 "no_git": ArgSpec(flag="--no-git", type="bool", default=True),
                 "yes_always": ArgSpec(flag="--yes-always", type="bool", default=True),
-            }
+            },
         )
 
         agent = ComposableAgent(config)
         mock_process = create_mock_process(stdout_lines=[b"success\n"])
 
-        with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
-            task_config = {
-                "prompt": "Add docstring",
-                "files": "main.py",
-                "model": "gpt-4o"  # Override default
-            }
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            task_config = {"prompt": "Add docstring", "files": "main.py", "model": "gpt-4o"}  # Override default
 
             result = await agent.execute(task_config, timeout=30)
 
@@ -79,11 +77,14 @@ class TestCommandBuilding:
             call_args = mock_exec.call_args[0]
             assert call_args == (
                 "test_cli",
-                "--message", "Add docstring",
-                "--model", "gpt-4o",
-                "--file", "main.py",
+                "--message",
+                "Add docstring",
+                "--model",
+                "gpt-4o",
+                "--file",
+                "main.py",
                 "--no-git",
-                "--yes-always"
+                "--yes-always",
             )
 
             # Verify result structure
@@ -100,13 +101,13 @@ class TestCommandBuilding:
             args={
                 "prompt": ArgSpec(flag="-p", type="string", required=True),
                 "optional": ArgSpec(flag="--opt", type="string", default=None),
-            }
+            },
         )
 
         agent = ComposableAgent(config)
         mock_process = create_mock_process()
 
-        with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
             result = await agent.execute({"prompt": "test"}, timeout=10)
 
             call_args = mock_exec.call_args[0]
@@ -123,13 +124,13 @@ class TestCommandBuilding:
             args={
                 "subcmd": ArgSpec(flag="", type="string", default="run"),
                 "message": ArgSpec(flag="-m", type="string", required=True),
-            }
+            },
         )
 
         agent = ComposableAgent(config)
         mock_process = create_mock_process()
 
-        with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
             result = await agent.execute({"message": "hello"}, timeout=10)
 
             call_args = mock_exec.call_args[0]
@@ -148,13 +149,13 @@ class TestCommandBuilding:
             args={
                 "model": ArgSpec(flag="--model", type="string", default="default-model"),
                 "timeout": ArgSpec(flag="--timeout", type="string", default="30"),
-            }
+            },
         )
 
         agent = ComposableAgent(config)
         mock_process = create_mock_process()
 
-        with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
             # Don't provide any config - should use defaults
             result = await agent.execute({}, timeout=10)
 
@@ -174,13 +175,13 @@ class TestCommandBuilding:
             args={
                 "verbose": ArgSpec(flag="--verbose", type="bool", default=False),
                 "quiet": ArgSpec(flag="--quiet", type="bool", default=False),
-            }
+            },
         )
 
         agent = ComposableAgent(config)
         mock_process = create_mock_process()
 
-        with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
             result = await agent.execute({}, timeout=10)
 
             call_args = mock_exec.call_args[0]
@@ -197,13 +198,13 @@ class TestCommandBuilding:
             command="test_cli",
             args={
                 "verbose": ArgSpec(flag="--verbose", type="bool", default=False),
-            }
+            },
         )
 
         agent = ComposableAgent(config)
         mock_process = create_mock_process()
 
-        with patch('asyncio.create_subprocess_exec', return_value=mock_process) as mock_exec:
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
             result = await agent.execute({"verbose": True}, timeout=10)
 
             call_args = mock_exec.call_args[0]
@@ -220,63 +221,27 @@ class TestAgentResult:
     def test_agent_result_success_property(self) -> None:
         """Test that success property correctly evaluates exit code and timeout."""
         # Success case
-        result = AgentResult(
-            stdout="output",
-            stderr="",
-            exit_code=0,
-            timed_out=False,
-            execution_time=1.0
-        )
+        result = AgentResult(stdout="output", stderr="", exit_code=0, timed_out=False, execution_time=1.0)
         assert result.success is True
 
         # Failure - non-zero exit code
-        result = AgentResult(
-            stdout="",
-            stderr="error",
-            exit_code=1,
-            timed_out=False,
-            execution_time=1.0
-        )
+        result = AgentResult(stdout="", stderr="error", exit_code=1, timed_out=False, execution_time=1.0)
         assert result.success is False
 
         # Failure - timed out
-        result = AgentResult(
-            stdout="",
-            stderr="",
-            exit_code=0,
-            timed_out=True,
-            execution_time=30.0
-        )
+        result = AgentResult(stdout="", stderr="", exit_code=0, timed_out=True, execution_time=30.0)
         assert result.success is False
 
     def test_agent_result_output_property(self) -> None:
         """Test that output property combines stdout and stderr correctly."""
         # Only stdout
-        result = AgentResult(
-            stdout="hello world",
-            stderr="",
-            exit_code=0,
-            timed_out=False,
-            execution_time=1.0
-        )
+        result = AgentResult(stdout="hello world", stderr="", exit_code=0, timed_out=False, execution_time=1.0)
         assert result.output == "hello world"
 
         # Both stdout and stderr
-        result = AgentResult(
-            stdout="hello",
-            stderr="warning",
-            exit_code=0,
-            timed_out=False,
-            execution_time=1.0
-        )
+        result = AgentResult(stdout="hello", stderr="warning", exit_code=0, timed_out=False, execution_time=1.0)
         assert result.output == "hello\nSTDERR: warning"
 
         # Only stderr
-        result = AgentResult(
-            stdout="",
-            stderr="error occurred",
-            exit_code=1,
-            timed_out=False,
-            execution_time=1.0
-        )
+        result = AgentResult(stdout="", stderr="error occurred", exit_code=1, timed_out=False, execution_time=1.0)
         assert result.output == "\nSTDERR: error occurred"

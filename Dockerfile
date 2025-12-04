@@ -47,5 +47,9 @@ RUN mkdir -p /root/.claude /root/.cursor-agent
 ENV PORT=8080
 EXPOSE 8080
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/api/healthz || exit 1
+
 # Run HTTP server (Cloud Run compatible)
-CMD ["python", "-m", "glyx.mcp.server", "--http"]
+CMD ["glyx-mcp-http"]

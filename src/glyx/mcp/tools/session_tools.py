@@ -32,7 +32,8 @@ async def list_sessions(ctx: Context) -> str:
         cursor = conn.cursor()
 
         # Query to get all unique session IDs with metadata
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 session_id,
                 MIN(created_at) as created_at,
@@ -41,20 +42,17 @@ async def list_sessions(ctx: Context) -> str:
             FROM items
             GROUP BY session_id
             ORDER BY MAX(created_at) DESC
-        """)
+        """
+        )
 
         sessions = []
         for row in cursor.fetchall():
-            sessions.append({
-                "id": row[0],
-                "created_at": row[1],
-                "updated_at": row[2],
-                "message_count": row[3]
-            })
+            sessions.append({"id": row[0], "created_at": row[1], "updated_at": row[2], "message_count": row[3]})
 
         conn.close()
 
         import json
+
         return json.dumps({"sessions": sessions})
 
     except Exception as e:
@@ -62,11 +60,7 @@ async def list_sessions(ctx: Context) -> str:
         return f'{{"error": "{str(e)}"}}'
 
 
-async def get_session_messages(
-    ctx: Context,
-    session_id: str,
-    limit: int | None = None
-) -> str:
+async def get_session_messages(ctx: Context, session_id: str, limit: int | None = None) -> str:
     """Get messages for a specific conversation session.
 
     Args:
@@ -98,15 +92,12 @@ async def get_session_messages(
 
         messages = []
         for row in cursor.fetchall():
-            messages.append({
-                "role": row[0],
-                "content": row[1],
-                "created_at": row[2]
-            })
+            messages.append({"role": row[0], "content": row[1], "created_at": row[2]})
 
         conn.close()
 
         import json
+
         return json.dumps({"messages": messages})
 
     except Exception as e:

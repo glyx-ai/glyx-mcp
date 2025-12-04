@@ -2,7 +2,7 @@
 
 import json
 
-from glyx.tasks.models.task import Task
+from glyx_python_sdk.models.task import Task
 
 
 async def create_task(task: Task) -> str:

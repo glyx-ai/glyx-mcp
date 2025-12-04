@@ -4,7 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-glyx-mcp is a FastMCP server that provides composable AI agent wrappers. Agents are defined via JSON configs and exposed as MCP tools.
+glyx-mcp is a FastMCP server built on **glyx-python-sdk** that provides composable AI agent wrappers. 
+
+**Architecture:**
+- **glyx-python-sdk** (v0.0.1): Core framework with agents, orchestration, memory, and pipelines
+  - Published package: https://test.pypi.org/project/glyx-python-sdk/
+  - Location: `packages/glyx-python-sdk/`
+  - Installed as local editable dependency
+- **glyx-mcp**: FastMCP/FastAPI server providing MCP tools, webhooks, and REST API
+  - Depends on glyx-python-sdk
+  - Location: `src/glyx/`
+
+Agents are defined via JSON configs in `agents/` and exposed as MCP tools.
 
 ## Essential Commands
 
@@ -35,7 +46,7 @@ ruff check src/
 
 ## Architecture
 
-### Core Pattern: ComposableAgent
+### Core Pattern: ComposableAgent (from SDK)
 
 Agents are JSON configs that map to CLI commands. The system transforms JSON → CLI args → subprocess execution → structured results.
 
@@ -52,29 +63,38 @@ Agents are JSON configs that map to CLI commands. The system transforms JSON →
   }
 }
 
-# Usage
-agent = ComposableAgent.from_key(AgentKey.AIDER)  # from glyx.core.agent
+# Usage (now from SDK)
+from glyx_python_sdk import ComposableAgent, AgentKey, AgentResult
+
+agent = ComposableAgent.from_key(AgentKey.AIDER)
 result: AgentResult = await agent.execute({"prompt": "...", "files": "..."})
 ```
 
 ### Key Components
 
-- **core/agent.py**: Core execution engine (`src/glyx/core/agent.py`)
+**From glyx-python-sdk (packages/glyx-python-sdk/):**
+- **agent.py**: Core execution engine
   - `AgentConfig`: Pydantic model for JSON configs
   - `AgentResult`: Structured subprocess output (stdout, stderr, exit_code, timing)
   - `ComposableAgent.execute()`: Builds CLI command, runs subprocess, handles timeouts
+- **registry.py**: Auto-discovers JSON agent configs and registers MCP tools
+- **orchestrator.py**: `GlyxOrchestrator` for coordinating multiple agents
+- **pipelines.py**: Multi-stage feature development workflows
+- **memory.py**: Mem0-based memory management
+- **models/**: Type-safe Pydantic models (cursor events, response events, tasks)
+- **integrations/**: Linear, Supabase integrations
 
+**From glyx-mcp (src/glyx/):**
 - **agents/*.json**: Agent definitions (aider, grok, claude, codex, etc.)
   - Validated on load via Pydantic
   - Support positional args (`flag: ""`), bool flags, defaults
-
-- **core/registry.py**: Auto-discovers JSON agent configs and registers MCP tools
-  - No manual per-agent wrappers needed; tools are generated dynamically
-
-- **mcp/server.py**: FastMCP server entrypoint (`src/glyx/mcp/server.py`)
-  - Tool registration
-  - Orchestrator tool (`orchestrate`) registration
-  - Optional REST API endpoints (health, memory, features, agents)
+- **mcp/server.py**: FastMCP server entrypoint
+  - Tool registration (uses SDK's `discover_and_register_agents`)
+  - Orchestrator tool (`orchestrate`)
+  - REST API endpoints (health, memory, features, agents)
+  - WebSocket support
+- **mcp/webhooks/**: GitHub and Linear webhook handlers
+- **mcp/tools/**: Additional MCP tools (session management, user interaction)
 
 ### Testing
 
@@ -97,10 +117,12 @@ E2E tests require:
 ## Adding New Agents
 
 1. Create config: `agents/my_agent.json`
-2. Add enum (optional, for convenience): `AgentKey.MY_AGENT` in `src/glyx/core/agent.py`
-3. No wrapper needed: agents are auto-discovered via `discover_and_register_agents(...)`
+2. Add enum (optional, for convenience): `AgentKey.MY_AGENT` in SDK's `agent.py`
+3. No wrapper needed: agents are auto-discovered via SDK's `discover_and_register_agents(...)`
 4. Run server: `glyx-mcp` (the tool `use_my_agent` will be available automatically)
 5. Test: Add to `tests/test_config_validation.py`
+
+Note: Core agent framework lives in glyx-python-sdk package.
 
 ## MCP Integration
 
@@ -141,3 +163,4 @@ uv run pytest tests/test_client_integration.py -vv -ss
 ```
 - No defensive programming. Prefer a flat, expressive coding style.
 - Style guidelines: we ALWAYS put Python imports at the top of the file.
+- No backwards compatible aliases, EVER.

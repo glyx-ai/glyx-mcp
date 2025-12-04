@@ -12,8 +12,8 @@ Add visual inspection capabilities for Product/QA agents in the organization hie
 ## Architecture
 
 ### Phase 1: Screenshot Capability ✅
-**Tool**: `shot-scraper` (Python CLI wrapping Playwright)  
-**Config**: `agents/shot_scraper.json`  
+**Tool**: `shot-scraper` (Python CLI wrapping Playwright)
+**Config**: `agents/shot_scraper.json`
 **Registration**: Auto-discovered via `discover_and_register_agents` (no manual wrapper required)
 
 **Capabilities**:

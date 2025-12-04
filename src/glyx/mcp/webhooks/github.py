@@ -1,42 +1,12 @@
 """GitHub webhook handler for glyx-mcp."""
 
-import hashlib
-import hmac
 import logging
-import os
-from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel
-
-from glyx.mcp.settings import settings
+from glyx_python_sdk import settings
+from glyx.mcp.webhooks.base import WebhookConfig, create_webhook_router, log_webhook_event
 
 logger = logging.getLogger(__name__)
-
-# Test mode flag - set WEBHOOK_TEST_MODE=true to skip signature verification
-WEBHOOK_TEST_MODE = os.environ.get("WEBHOOK_TEST_MODE", "").lower() == "true"
-
-router = APIRouter(prefix="/webhooks", tags=["webhooks"])
-
-
-class WebhookResponse(BaseModel):
-    success: bool
-    event: str
-    delivery_id: str | None = None
-    message: str | None = None
-
-
-def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
-    """Verify GitHub webhook signature."""
-    if not signature.startswith("sha256="):
-        return False
-    expected = hmac.new(
-        secret.encode("utf-8"),
-        payload,
-        hashlib.sha256,
-    ).hexdigest()
-    return hmac.compare_digest(f"sha256={expected}", signature)
 
 
 def get_account_name(account: dict | None) -> str:
@@ -64,47 +34,21 @@ async def create_activity(
     metadata: dict | None = None,
 ) -> None:
     """Create an activity record in Supabase."""
-    try:
-        supabase_client.table("activities").insert({
-            "type": event_type,
-            "actor": actor,
-            "content": content,
-            "org_id": org_id,
-            "org_name": org_name,
-            "metadata": metadata or {},
-            "created_at": datetime.now().isoformat(),
-        }).execute()
-        logger.info(f"Created activity: {event_type} by {actor}")
-    except Exception as e:
-        logger.error(f"Failed to create activity: {e}")
+    supabase_client.table("activities").insert({
+        "type": event_type,
+        "actor": actor,
+        "content": content,
+        "org_id": org_id,
+        "org_name": org_name,
+        "metadata": metadata or {},
+        "created_at": __import__("datetime").datetime.now().isoformat(),
+    }).execute()
+    logger.info(f"Created activity: {event_type} by {actor}")
 
 
-async def log_webhook_event(
-    supabase_client: Any,
-    event_type: str,
-    action: str | None,
-    installation_id: int | None,
-    payload: dict,
-    processed: bool = True,
-    error: str | None = None,
-) -> None:
-    """Log webhook event to database."""
-    try:
-        supabase_client.table("github_webhook_events").insert({
-            "event_type": event_type,
-            "action": action,
-            "installation_id": installation_id,
-            "payload": payload,
-            "processed": processed,
-            "processed_at": datetime.now().isoformat() if processed else None,
-            "error": error,
-        }).execute()
-    except Exception as e:
-        logger.error(f"Failed to log webhook event: {e}")
-
-
-async def handle_installation(payload: dict, action: str, supabase_client: Any) -> str:
+async def handle_installation(payload: dict, supabase_client: Any) -> str:
     """Handle installation events."""
+    action = payload.get("action", "")
     installation = payload.get("installation", {})
     account = installation.get("account", {})
     account_name = get_account_name(account)
@@ -158,8 +102,9 @@ async def handle_push(payload: dict, supabase_client: Any) -> str:
     return f"Push to {repo}: {len(commits)} commits"
 
 
-async def handle_pull_request(payload: dict, action: str, supabase_client: Any) -> str:
+async def handle_pull_request(payload: dict, supabase_client: Any) -> str:
     """Handle pull request events."""
+    action = payload.get("action", "")
     pr = payload.get("pull_request", {})
     repo = payload.get("repository", {}).get("full_name", "unknown")
     author = pr.get("user", {}).get("login", "unknown")
@@ -189,8 +134,9 @@ async def handle_pull_request(payload: dict, action: str, supabase_client: Any) 
     return f"PR {action} on {repo}: #{number}"
 
 
-async def handle_issues(payload: dict, action: str, supabase_client: Any) -> str:
+async def handle_issues(payload: dict, supabase_client: Any) -> str:
     """Handle issue events."""
+    action = payload.get("action", "")
     issue = payload.get("issue", {})
     repo = payload.get("repository", {}).get("full_name", "unknown")
     author = issue.get("user", {}).get("login", "unknown")
@@ -225,7 +171,6 @@ async def handle_issue_comment(payload: dict, supabase_client: Any) -> str:
     body = comment.get("body", "")
     number = issue.get("number", 0)
 
-    # Check for mentions that should trigger agent
     body_lower = body.lower()
     if "@julian" in body_lower or "/glyx" in body_lower:
         await create_activity(
@@ -241,17 +186,17 @@ async def handle_issue_comment(payload: dict, supabase_client: Any) -> str:
                 "issue_number": number,
                 "comment_url": comment.get("html_url"),
                 "comment_body": body[:500],
-                "trigger": True,  # Flag for agent processing
+                "trigger": True,
             },
         )
-        # TODO: Queue agent task to respond
         return f"Mention detected in {repo}#{number} - agent task queued"
 
     return f"Comment on {repo}#{number}"
 
 
-async def handle_workflow_run(payload: dict, action: str, supabase_client: Any) -> str:
+async def handle_workflow_run(payload: dict, supabase_client: Any) -> str:
     """Handle workflow run events."""
+    action = payload.get("action", "")
     if action != "completed":
         return f"Workflow {action}"
 
@@ -277,99 +222,60 @@ async def handle_workflow_run(payload: dict, action: str, supabase_client: Any) 
     return f"Workflow {name} {conclusion}"
 
 
-def create_github_webhook_router(get_supabase_fn) -> APIRouter:
-    """Create GitHub webhook router with Supabase client factory."""
-
-    @router.post("/github", response_model=WebhookResponse)
-    async def github_webhook(
-        request: Request,
-        x_hub_signature_256: str | None = Header(None),
-        x_github_event: str | None = Header(None),
-        x_github_delivery: str | None = Header(None),
-    ) -> WebhookResponse:
-        """Handle GitHub webhook events."""
-        # Validate event header (always required)
-        if not x_github_event:
-            raise HTTPException(status_code=400, detail="Missing X-GitHub-Event header")
-
-        # Read body first (needed for both signature check and parsing)
-        body = await request.body()
-
-        # Skip signature verification in test mode
-        if WEBHOOK_TEST_MODE:
-            logger.warning("WEBHOOK_TEST_MODE enabled - signature verification skipped")
-        else:
-            if not x_hub_signature_256:
-                raise HTTPException(status_code=400, detail="Missing X-Hub-Signature-256 header")
-
-            webhook_secret = settings.github_webhook_secret
-            if not webhook_secret:
-                raise HTTPException(status_code=500, detail="GitHub webhook not configured")
-
-            if not verify_signature(body, x_hub_signature_256, webhook_secret):
-                raise HTTPException(status_code=401, detail="Invalid signature")
-
-        # Parse payload
-        try:
-            payload = await request.json()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
-
-        # Get Supabase client
-        supabase = get_supabase_fn()
-
-        # Log the event
-        action = payload.get("action")
-        installation_id = get_installation_id(payload)
-        await log_webhook_event(supabase, x_github_event, action, installation_id, payload)
-
-        # Process event
-        try:
-            message = await process_event(x_github_event, action, payload, supabase)
-            return WebhookResponse(
-                success=True,
-                event=x_github_event,
-                delivery_id=x_github_delivery,
-                message=message,
-            )
-        except Exception as e:
-            logger.exception(f"Error processing {x_github_event}")
-            await log_webhook_event(
-                supabase, x_github_event, action, installation_id, payload,
-                processed=False, error=str(e),
-            )
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.get("/github/health")
-    async def github_webhook_health() -> dict:
-        """Health check for GitHub webhook endpoint."""
-        return {
-            "status": "ok",
-            "configured": bool(settings.github_webhook_secret),
-        }
-
-    return router
-
-
-async def process_event(
-    event: str,
-    action: str | None,
-    payload: dict,
-    supabase_client: Any,
-) -> str:
+async def process_github_event(payload: dict, supabase_client: Any) -> str:
     """Process a GitHub webhook event."""
+    event = payload.get("_event_type", "")
+
     handlers = {
-        "installation": lambda: handle_installation(payload, action or "", supabase_client),
+        "installation": lambda: handle_installation(payload, supabase_client),
         "push": lambda: handle_push(payload, supabase_client),
-        "pull_request": lambda: handle_pull_request(payload, action or "", supabase_client),
-        "issues": lambda: handle_issues(payload, action or "", supabase_client),
+        "pull_request": lambda: handle_pull_request(payload, supabase_client),
+        "issues": lambda: handle_issues(payload, supabase_client),
         "issue_comment": lambda: handle_issue_comment(payload, supabase_client),
-        "workflow_run": lambda: handle_workflow_run(payload, action or "", supabase_client),
+        "workflow_run": lambda: handle_workflow_run(payload, supabase_client),
     }
 
     handler = handlers.get(event)
     if handler:
         return await handler()
 
-    logger.info(f"Unhandled event: {event}")
+    logger.info(f"Unhandled GitHub event: {event}")
     return f"Event {event} received"
+
+
+def create_github_webhook_router(get_supabase_fn) -> Any:
+    """Create GitHub webhook router with Supabase client factory."""
+    config = WebhookConfig(
+        name="github",
+        signature_header="X-Hub-Signature-256",
+        event_header="X-GitHub-Event",
+        secret_setting="github_webhook_secret",
+        log_table="github_webhook_events",
+    )
+
+    async def github_event_handler(payload: dict, supabase: Any) -> str:
+        """Handle GitHub webhook event with action extraction."""
+        event = payload.get("_event_type", "")
+        action = payload.get("action")
+        installation_id = get_installation_id(payload)
+
+        log_webhook_event(
+            supabase,
+            config,
+            event,
+            payload,
+            metadata={"action": action, "installation_id": installation_id},
+        )
+
+        return await process_github_event(payload, supabase)
+
+    def get_secret(setting_name: str) -> str | None:
+        """Get secret from settings."""
+        return getattr(settings, setting_name, None)
+
+    return create_webhook_router(
+        config=config,
+        get_supabase_fn=get_supabase_fn,
+        get_secret_fn=get_secret,
+        process_event=github_event_handler,
+    )

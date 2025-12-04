@@ -1,60 +1,68 @@
+# Git
+.git
+.gitignore
+.github
+
 # Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
+__pycache__
+*.pyc
+*.pyo
+*.pyd
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
+*.so
 *.egg
+*.egg-info
+dist
+build
+.eggs
+.pytest_cache
+.mypy_cache
+.ruff_cache
 
-# Virtual environments
-venv/
-env/
-ENV/
+# Environment
+.env
+.env.*
+!.env.example
 
-# IDEs
-.vscode/
-.idea/
+# IDE
+.vscode
+.idea
 *.swp
 *.swo
 *~
 
-# Git
-.git/
-.gitignore
+# Logs
+logs/
+*.log
 
-# Documentation
-*.md
-!README.md
-docs/
-
-# Docker
-Dockerfile
-compose.yml
-docker-compose.yml
-.dockerignore
-
-# CI/CD
-.github/
-.gitlab-ci.yml
-
-# Tests
-tests/
-*.pytest_cache/
+# Data
+.data/
+*.db
+*.sqlite
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Tests
+tests/
+.coverage
+htmlcov/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Node modules (if any)
+node_modules/
+
+# Credentials
+*.json
+!agents/*.json
+!package*.json

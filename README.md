@@ -198,28 +198,48 @@ HTTP:
 
 ---
 
-## Deployments
+## Production Deployment
 
-| Service | Platform | URL |
-|---------|----------|-----|
-| MCP Server | Fly.io | `https://glyx-mcp.fly.dev` |
-| UI | Vercel | `https://glyx.vercel.app` |
+The application is **production-ready** with complete deployment automation and monitoring.
 
-### Deploy to Fly.io
+### Quick Deploy (3 Steps)
 
 ```bash
-# Install flyctl
-curl -L https://fly.io/install.sh | sh
+# 1. Configure environment
+cp .env.production .env.production.local
+# Edit and add your API keys
 
-# Login
-fly auth login
+# 2. Validate configuration
+uv run python scripts/validate_deployment.py
 
-# Deploy (uses Dockerfile)
-fly deploy
+# 3. Deploy to Fly.io
+./deploy.sh
 ```
 
-### MCP Client Configuration (Fly.io)
+### Deployment Options
 
+| Platform | Command | Best For |
+|----------|---------|----------|
+| **Fly.io** | `./deploy.sh` | Production (recommended) |
+| **Docker Compose** | `docker compose up -d` | Local/Self-hosted |
+| **Cloud Run** | `gcloud run deploy` | GCP ecosystem |
+
+### Health & Monitoring
+
+```bash
+# Basic health check
+curl https://glyx-mcp.fly.dev/api/healthz
+
+# Detailed status with component checks
+curl https://glyx-mcp.fly.dev/api/health/detailed
+
+# Performance metrics
+curl https://glyx-mcp.fly.dev/api/metrics
+```
+
+### MCP Client Configuration
+
+**Production (Fly.io):**
 ```json
 {
   "mcpServers": {
@@ -233,15 +253,36 @@ fly deploy
 }
 ```
 
-### Environment Variables (Fly.io)
-
-Set secrets via `fly secrets set`:
-
-```bash
-fly secrets set OPENAI_API_KEY=sk-...
-fly secrets set ANTHROPIC_API_KEY=sk-ant-...
-fly secrets set OPENROUTER_API_KEY=sk-or-...
+**Local:**
+```json
+{
+  "mcpServers": {
+    "glyx-mcp": {
+      "transport": {
+        "type": "http",
+        "url": "http://localhost:8080/mcp"
+      }
+    }
+  }
+}
 ```
+
+### Documentation
+
+- 📖 [PRODUCTION_READY.md](PRODUCTION_READY.md) - Start here for deployment
+- 🚀 [QUICKSTART.md](QUICKSTART.md) - Quick start guide
+- 📚 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Complete deployment guide
+- 📊 [DEPLOYMENT_SUMMARY.md](DEPLOYMENT_SUMMARY.md) - Full overview
+
+### What's Included
+
+- ✅ Automated deployment script with validation
+- ✅ Health check endpoints with component monitoring
+- ✅ Production-optimized Docker images
+- ✅ Pre-deployment validation tool
+- ✅ Security hardening (JWT, CORS, secrets)
+- ✅ Performance metrics and uptime tracking
+- ✅ Comprehensive documentation
 
 ---
 

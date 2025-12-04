@@ -104,8 +104,10 @@
       "Bash(pnpm dev --help:*)",
       "Bash(pnpm build:extension:*)",
       "Bash(openssl rand:*)",
-      "Bash(uv pip install:*)"
-      "Bash(pnpm build:extension:*)"
+      "Bash(uv pip install:*)",
+      "Bash(pnpm build:extension:*)",
+      "Bash(/opt/homebrew/bin/supabase db push:*)",
+      "Bash(git restore:*)"
     ],
     "additionalDirectories": [
       "/home/parallels/glyx-mcp-tasks/",

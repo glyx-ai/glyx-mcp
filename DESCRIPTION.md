@@ -93,13 +93,13 @@ Agents stream progress updates via FastMCP context, WebSocket broadcasts, and as
 ```python
 async def use_aider(prompt: str, files: str, ctx: Context) -> str:
     await ctx.info("🚀 Starting Aider execution")
-    
+
     agent = ComposableAgent.from_key(AgentKey.AIDER)
     result = await agent.execute({
         "prompt": prompt,
         "files": files
     }, timeout=300, ctx=ctx)
-    
+
     # Progress updates automatically sent via ctx.info()
     return result.output
 ```
@@ -179,10 +179,10 @@ Flow: `AgentConfig (JSON) → ComposableAgent.execute() → subprocess → Agent
 class ComposableAgent:
     def __init__(self, config: AgentConfig):
         self.config = config
-    
+
     async def execute(self, task_config: dict, timeout: int, ctx=None) -> AgentResult:
         cmd = [self.config.command]
-        
+
         # Build CLI args from config
         for key, arg_spec in self.config.args.items():
             value = task_config.get(key, arg_spec.default)
@@ -194,11 +194,11 @@ class ComposableAgent:
                         cmd.extend([arg_spec.flag, str(value)])
                 else:  # Positional arg
                     cmd.append(str(value))
-        
+
         # Execute subprocess
         process = await asyncio.create_subprocess_exec(*cmd, ...)
         # ... handle stdout/stderr, timeout, etc.
-        
+
         return AgentResult(stdout=..., stderr=..., exit_code=...)
 ```
 

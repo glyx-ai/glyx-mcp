@@ -111,12 +111,7 @@ def check_cli_installed(cli_name: str, min_version: str | None = None) -> None:
     # If min_version specified, try to check version
     if min_version:
         try:
-            result = subprocess.run(
-                [cli_name, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            result = subprocess.run([cli_name, "--version"], capture_output=True, text=True, timeout=5)
             version_output = result.stdout + result.stderr
 
             # Simple version check (this may need adjustment per CLI)

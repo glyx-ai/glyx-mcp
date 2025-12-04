@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from glyx.core.agent import AgentConfig, ArgSpec
+from glyx_python_sdk import AgentConfig, ArgSpec
 
 
 class TestArgSpecValidation:
@@ -16,12 +16,7 @@ class TestArgSpecValidation:
 
     def test_valid_argspec_loads_successfully(self) -> None:
         """Test that a valid ArgSpec passes validation."""
-        arg = ArgSpec(
-            flag="--message",
-            type="string",
-            required=True,
-            description="Test argument"
-        )
+        arg = ArgSpec(flag="--message", type="string", required=True, description="Test argument")
 
         assert arg.flag == "--message"
         assert arg.type == "string"
@@ -41,11 +36,7 @@ class TestArgSpecValidation:
     def test_invalid_arg_type_raises_validation_error(self) -> None:
         """Test that invalid argument types are caught."""
         with pytest.raises(ValidationError) as exc_info:
-            ArgSpec(
-                flag="--test",
-                type="invalid_type",  # Should only be string/bool/int
-                required=False
-            )
+            ArgSpec(flag="--test", type="invalid_type", required=False)  # Should only be string/bool/int
 
         error_str = str(exc_info.value)
         assert "type" in error_str.lower()
@@ -66,13 +57,7 @@ class TestArgSpecValidation:
 
     def test_argspec_with_all_fields(self) -> None:
         """Test ArgSpec with all fields specified."""
-        arg = ArgSpec(
-            flag="--verbose",
-            type="bool",
-            required=False,
-            default=True,
-            description="Enable verbose output"
-        )
+        arg = ArgSpec(flag="--verbose", type="bool", required=False, default=True, description="Enable verbose output")
 
         assert arg.flag == "--verbose"
         assert arg.type == "bool"
@@ -92,7 +77,7 @@ class TestAgentConfigValidation:
             args={
                 "prompt": ArgSpec(flag="--message", type="string", required=True),
             },
-            description="Test agent"
+            description="Test agent",
         )
 
         assert config.agent_key == "test"
@@ -106,7 +91,7 @@ class TestAgentConfigValidation:
             AgentConfig(
                 agent_key="test",
                 # Missing 'command' - required field
-                args={}
+                args={},
             )
 
         error = exc_info.value
@@ -116,21 +101,13 @@ class TestAgentConfigValidation:
     def test_empty_command_raises_validation_error(self) -> None:
         """Test that empty command string is rejected."""
         with pytest.raises(ValidationError) as exc_info:
-            AgentConfig(
-                agent_key="test",
-                command="",  # Empty string should fail min_length validation
-                args={}
-            )
+            AgentConfig(agent_key="test", command="", args={})  # Empty string should fail min_length validation
 
         assert "command" in str(exc_info.value).lower()
 
     def test_config_with_empty_args_dict(self) -> None:
         """Test that config with no arguments is valid."""
-        config = AgentConfig(
-            agent_key="simple",
-            command="simple_cli",
-            args={}
-        )
+        config = AgentConfig(agent_key="simple", command="simple_cli", args={})
 
         assert config.agent_key == "simple"
         assert config.command == "simple_cli"
@@ -139,10 +116,7 @@ class TestAgentConfigValidation:
     def test_config_with_capabilities(self) -> None:
         """Test that optional capabilities field works."""
         config = AgentConfig(
-            agent_key="test",
-            command="test_cli",
-            args={},
-            capabilities=["code_generation", "reasoning", "analysis"]
+            agent_key="test", command="test_cli", args={}, capabilities=["code_generation", "reasoning", "analysis"]
         )
 
         assert len(config.capabilities) == 3
@@ -151,11 +125,7 @@ class TestAgentConfigValidation:
 
     def test_config_defaults(self) -> None:
         """Test that optional fields have correct defaults."""
-        config = AgentConfig(
-            agent_key="minimal",
-            command="minimal_cli",
-            args={}
-        )
+        config = AgentConfig(agent_key="minimal", command="minimal_cli", args={})
 
         assert config.description is None
         assert config.version is None
@@ -163,12 +133,7 @@ class TestAgentConfigValidation:
 
     def test_config_with_version(self) -> None:
         """Test that version field is stored correctly."""
-        config = AgentConfig(
-            agent_key="test",
-            command="test_cli",
-            args={},
-            version=">=1.0.0"
-        )
+        config = AgentConfig(agent_key="test", command="test_cli", args={}, version=">=1.0.0")
 
         assert config.version == ">=1.0.0"
 
@@ -182,7 +147,7 @@ class TestAgentConfigValidation:
                 "verbose": ArgSpec(flag="--verbose", type="bool", default=False),
                 "count": ArgSpec(flag="--count", type="int", default=10),
                 "subcmd": ArgSpec(flag="", type="string", default="run"),
-            }
+            },
         )
 
         assert len(config.args) == 4
@@ -200,18 +165,16 @@ class TestConfigFromFile:
 
         # Create a valid config file
         config_file = tmp_path / "valid.json"
-        config_file.write_text(json.dumps({
-            "test_agent": {
-                "command": "test_cli",
-                "args": {
-                    "prompt": {
-                        "flag": "--message",
-                        "type": "string",
-                        "required": True
+        config_file.write_text(
+            json.dumps(
+                {
+                    "test_agent": {
+                        "command": "test_cli",
+                        "args": {"prompt": {"flag": "--message", "type": "string", "required": True}},
                     }
                 }
-            }
-        }))
+            )
+        )
 
         config = AgentConfig.from_file(config_file)
         assert config.agent_key == "test_agent"
@@ -222,12 +185,16 @@ class TestConfigFromFile:
 
         # Create an invalid config file (missing command)
         invalid_file = tmp_path / "invalid.json"
-        invalid_file.write_text(json.dumps({
-            "bad_agent": {
-                "args": {}
-                # Missing 'command'
-            }
-        }))
+        invalid_file.write_text(
+            json.dumps(
+                {
+                    "bad_agent": {
+                        "args": {}
+                        # Missing 'command'
+                    }
+                }
+            )
+        )
 
         with pytest.raises(ValidationError):
             AgentConfig.from_file(invalid_file)
@@ -236,18 +203,16 @@ class TestConfigFromFile:
         """Test that invalid arg types in file are caught."""
 
         config_file = tmp_path / "bad_type.json"
-        config_file.write_text(json.dumps({
-            "test": {
-                "command": "test_cli",
-                "args": {
-                    "bad_arg": {
-                        "flag": "--bad",
-                        "type": "float",  # Invalid type
-                        "required": False
+        config_file.write_text(
+            json.dumps(
+                {
+                    "test": {
+                        "command": "test_cli",
+                        "args": {"bad_arg": {"flag": "--bad", "type": "float", "required": False}},  # Invalid type
                     }
                 }
-            }
-        }))
+            )
+        )
 
         with pytest.raises(ValidationError) as exc_info:
             AgentConfig.from_file(config_file)
@@ -258,15 +223,19 @@ class TestConfigFromFile:
         """Test loading config with all optional fields."""
 
         config_file = tmp_path / "full.json"
-        config_file.write_text(json.dumps({
-            "full_agent": {
-                "command": "full_cli",
-                "args": {},
-                "description": "A fully specified agent",
-                "version": ">=1.0.0",
-                "capabilities": ["coding", "reasoning"]
-            }
-        }))
+        config_file.write_text(
+            json.dumps(
+                {
+                    "full_agent": {
+                        "command": "full_cli",
+                        "args": {},
+                        "description": "A fully specified agent",
+                        "version": ">=1.0.0",
+                        "capabilities": ["coding", "reasoning"],
+                    }
+                }
+            )
+        )
 
         config = AgentConfig.from_file(config_file)
         assert config.agent_key == "full_agent"
@@ -367,13 +336,13 @@ class TestExistingAgentConfigs:
                 continue
 
             config = AgentConfig.from_file(config_file)
-            assert config.agent_key not in agent_keys, \
-                f"Duplicate agent key: {config.agent_key}"
+            assert config.agent_key not in agent_keys, f"Duplicate agent key: {config.agent_key}"
             agent_keys.add(config.agent_key)
             agent_config_count += 1
 
-        assert len(agent_keys) == agent_config_count, \
-            "Number of unique agent keys doesn't match number of agent configs"
+        assert (
+            len(agent_keys) == agent_config_count
+        ), "Number of unique agent keys doesn't match number of agent configs"
 
     def test_all_configs_have_valid_commands(self) -> None:
         """Test that all configs have non-empty command strings."""
@@ -390,9 +359,6 @@ class TestExistingAgentConfigs:
                 continue
 
             config = AgentConfig.from_file(config_file)
-            assert config.command, \
-                f"{config_file.name} has empty command"
-            assert len(config.command) > 0, \
-                f"{config_file.name} has empty command string"
-            assert isinstance(config.command, str), \
-                f"{config_file.name} command is not a string"
+            assert config.command, f"{config_file.name} has empty command"
+            assert len(config.command) > 0, f"{config_file.name} has empty command string"
+            assert isinstance(config.command, str), f"{config_file.name} command is not a string"

@@ -9,10 +9,13 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from time import time
 from typing import Any
 
 import uvicorn
-from fastapi import APIRouter, FastAPI, Header, HTTPException, WebSocket
+from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, WebSocket
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastmcp import Context, FastMCP
@@ -22,8 +25,8 @@ from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 from openai import AsyncOpenAI
 from supabase import create_client
 
-from glyx.core.agent import AgentKey, ComposableAgent
-from glyx.core.pipelines import (
+from glyx_python_sdk import (
+    ComposableAgent,
     Feature,
     FeatureCreate,
     FeatureUpdate,
@@ -32,27 +35,14 @@ from glyx.core.pipelines import (
     get_feature,
     list_features,
     save_feature,
-)
-from glyx.core.registry import discover_and_register_agents
-from glyx.mcp.models.response import BaseResponseEvent, StreamEventType, parse_response_event
-from glyx.mcp.orchestration.orchestrator import Orchestrator
-from glyx.mcp.settings import settings
-from glyx.mcp.tools.agent_crud import (
-    create_agent,
-    delete_agent,
-    get_agent,
-    list_agents,
-)
-from glyx.mcp.tools.interact_with_user import ask_user
-from glyx.mcp.tools.session_tools import (
-    get_session_messages,
-    list_sessions,
-)
-from glyx.mcp.tools.use_memory import (
+    discover_and_register_agents,
+    GlyxOrchestrator,
+    settings,
     save_memory,
     search_memory,
 )
-from glyx.mcp.types import (
+from glyx_python_sdk.models.response import BaseResponseEvent, StreamEventType, parse_response_event
+from glyx_python_sdk.types import (
     AgentResponse,
     AuthResponse,
     AuthSignInRequest,
@@ -68,11 +58,23 @@ from glyx.mcp.types import (
     StreamCursorRequest,
     TaskResponse,
 )
+from glyx_python_sdk.websocket_manager import manager as ws_manager
+from glyx.mcp.tools.agent_crud import (
+    create_agent,
+    delete_agent,
+    get_agent,
+    list_agents,
+)
+from glyx.mcp.tools.interact_with_user import ask_user
+from glyx.mcp.tools.session_tools import (
+    get_session_messages,
+    list_sessions,
+)
 from glyx.mcp.webhooks.github import create_github_webhook_router
-from glyx.mcp.websocket_manager import manager as ws_manager
+from glyx.mcp.webhooks.linear import create_linear_webhook_router
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stderr),
@@ -81,6 +83,9 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# Track server start time for uptime metrics
+start_time = time()
 
 
 # Optional Langfuse instrumentation (only if keys are configured)
@@ -106,7 +111,7 @@ else:
 
 # Configure FastMCP client logging (messages sent to MCP clients)
 to_client_logger = get_logger(name="fastmcp.server.context.to_client")
-to_client_logger.setLevel(level=logging.DEBUG)
+to_client_logger.setLevel(level=logging.INFO)
 
 
 mcp = FastMCP("glyx-mcp")
@@ -145,14 +150,26 @@ async def orchestrate(
     Args:
         task: The task description to orchestrate across multiple agents
     """
-    logger.info(f"orchestrate tool received - task: {task!r}")
-    orchestrator = Orchestrator(ctx=ctx, model="gpt-5")
+    from agents.items import ItemHelpers, MessageOutputItem
 
-    # Run orchestration synchronously and return the result
-    # (The orchestrator internally runs agents in parallel via OpenAI Agents SDK)
+    logger.info(f"orchestrate tool received - task: {task!r}")
+
+    orchestrator = GlyxOrchestrator(
+        agent_name="MCPOrchestrator",
+        model="openrouter/anthropic/claude-sonnet-4",
+        mcp_servers=[],
+        session_id="mcp-orchestrate",
+    )
+
     try:
-        result = await orchestrator.orchestrate(task)
-        return f"✅ Orchestration completed successfully\n\n{result.output}"
+        output_parts = []
+        async for item in orchestrator.run_prompt_streamed_items(task):
+            if isinstance(item, MessageOutputItem):
+                text = ItemHelpers.text_message_output(item)
+                output_parts.append(text)
+
+        await orchestrator.cleanup()
+        return f"✅ Orchestration completed successfully\n\n{''.join(output_parts)}"
     except Exception as e:
         logger.error(f"Orchestration failed: {e}")
         return f"❌ Orchestration failed: {e}"
@@ -166,13 +183,81 @@ def main() -> None:
 # Create FastAPI app for additional routes (WebSocket, streaming, health)
 api_app = FastAPI()
 
+
 # API router with /api prefix
 api_router = APIRouter(prefix="/api")
 
 
 @api_router.get("/healthz")
-async def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+async def healthz() -> dict[str, Any]:
+    """Basic health check endpoint."""
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "service": "glyx-mcp"
+    }
+
+
+@api_router.get("/health/detailed")
+async def health_detailed() -> dict[str, Any]:
+    """Detailed health check with service status."""
+    checks: dict[str, Any] = {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "service": "glyx-mcp",
+        "checks": {}
+    }
+    
+    # Check Supabase connection
+    if settings.supabase_url and settings.supabase_anon_key:
+        try:
+            client = get_supabase()
+            client.table("organizations").select("id").limit(1).execute()
+            checks["checks"]["supabase"] = {"status": "ok", "message": "Connected"}
+        except Exception as e:
+            checks["checks"]["supabase"] = {"status": "error", "message": str(e)}
+            checks["status"] = "degraded"
+    else:
+        checks["checks"]["supabase"] = {"status": "not_configured"}
+    
+    # Check Langfuse connection
+    if langfuse:
+        try:
+            langfuse.auth_check()
+            checks["checks"]["langfuse"] = {"status": "ok", "message": "Connected"}
+        except Exception as e:
+            checks["checks"]["langfuse"] = {"status": "error", "message": str(e)}
+            checks["status"] = "degraded"
+    else:
+        checks["checks"]["langfuse"] = {"status": "not_configured"}
+    
+    # Check OpenAI API key
+    checks["checks"]["openai"] = {
+        "status": "configured" if settings.openai_api_key else "not_configured"
+    }
+    
+    # Check Anthropic API key
+    checks["checks"]["anthropic"] = {
+        "status": "configured" if settings.anthropic_api_key else "not_configured"
+    }
+    
+    # Check OpenRouter API key
+    checks["checks"]["openrouter"] = {
+        "status": "configured" if settings.openrouter_api_key else "not_configured"
+    }
+    
+    return checks
+
+
+@api_router.get("/metrics")
+async def metrics() -> dict[str, Any]:
+    """Prometheus-compatible metrics endpoint."""
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "service": "glyx-mcp",
+        "uptime_seconds": time() - start_time,
+        "agents_available": len(list((Path(__file__).parent.parent.parent.parent / "agents").glob("*.json"))),
+    }
 
 
 def _wrap_agent_event(event_payload: Any, timestamp: str | None) -> dict[str, Any]:
@@ -212,35 +297,65 @@ def _normalize_stream_payload(event: Any) -> Any:
 
 @api_app.post("/stream/cursor")
 async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
-    """Stream cursor agent output with real-time NDJSON events."""
+    """Stream orchestrator output using GlyxOrchestrator with LiteLLM."""
+    from agents.items import ItemHelpers, MessageOutputItem, ToolCallItem, ToolCallOutputItem, ReasoningItem
+
+    from glyx_python_sdk.agent import create_event
+    from glyx_python_sdk import build_task_prompt
+
+    async def publish(event_type: str, content: str, metadata: dict | None = None):
+        """Publish event to Supabase."""
+        await create_event(
+            org_id=body.organization_id,
+            type=event_type,
+            content=content,
+            org_name=body.organization_name,
+            metadata=metadata,
+        )
 
     async def generate():
         try:
-            prompt = body.prompt
-            model = body.model
+            prompt = build_task_prompt(body.task)
+            logger.info(f"[STREAM] Executing task {body.task.id}: {body.task.title}")
 
-            yield f"data: {json.dumps({'type': StreamEventType.PROGRESS.value, 'message': '🚀 Starting cursor agent...', 'timestamp': datetime.now().isoformat()})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'message': '🚀 Starting orchestrator...', 'timestamp': datetime.now().isoformat()})}\n\n"
 
-            agent = ComposableAgent.from_key(AgentKey.CURSOR)
+            orchestrator = GlyxOrchestrator(
+                agent_name="TaskOrchestrator",
+                model="openrouter/anthropic/claude-sonnet-4",
+                mcp_servers=[],
+                session_id=f"task-{body.task.id}",
+            )
 
-            # Stream events in real-time (activity creation handled inside execute_stream)
-            async for event in agent.execute_stream(
-                {
-                    "prompt": prompt,
-                    "model": model,
-                    "force": True,
-                    "output_format": "stream-json",
-                },
-                timeout=600,
-                org_id=body.organization_id,
-                org_name=body.organization_name,
-            ):
-                normalized = _normalize_stream_payload(event)
-                yield f"data: {json.dumps(normalized)}\n\n"
+            async for item in orchestrator.run_prompt_streamed_items(prompt):
+                timestamp = datetime.now().isoformat()
+
+                match item:
+                    case ToolCallItem() as item:
+                        await publish("tool_call", f"Tool: {item.raw_item.name}", {"tool_name": item.raw_item.name})
+                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': item.raw_item.name, 'timestamp': timestamp})}\n\n"
+
+                    case ToolCallOutputItem() as item:
+                        yield f"data: {json.dumps({'type': 'tool_output', 'output': str(item.output)[:500], 'timestamp': timestamp})}\n\n"
+
+                    case MessageOutputItem() as item:
+                        text = ItemHelpers.text_message_output(item)
+                        await publish("message", text)
+                        yield f"data: {json.dumps({'type': 'message', 'content': text, 'timestamp': timestamp})}\n\n"
+
+                    case ReasoningItem() as item:
+                        await publish("thinking", str(item.raw_item)[:500])
+                        yield f"data: {json.dumps({'type': 'thinking', 'content': str(item.raw_item), 'timestamp': timestamp})}\n\n"
+
+            await publish("complete", "Task completed")
+            yield f"data: {json.dumps({'type': 'complete', 'output': 'Task completed', 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            await orchestrator.cleanup()
 
         except Exception as e:
             logger.exception("Stream cursor error")
-            yield f"data: {json.dumps({'type': StreamEventType.ERROR.value, 'error': str(e), 'timestamp': datetime.now().isoformat()})}\n\n"
+            await publish("error", str(e))
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'timestamp': datetime.now().isoformat()})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -314,7 +429,13 @@ def get_supabase():
 async def api_list_organizations() -> list[OrganizationResponse]:
     """List all organizations from Supabase."""
     client = get_supabase()
-    response = client.table("organizations").select("*").eq("project_id", DEFAULT_PROJECT_ID).order("created_at", desc=True).execute()
+    response = (
+        client.table("organizations")
+        .select("*")
+        .eq("project_id", DEFAULT_PROJECT_ID)
+        .order("created_at", desc=True)
+        .execute()
+    )
     return [OrganizationResponse(**{**row, "id": str(row["id"])}) for row in response.data]
 
 
@@ -391,7 +512,13 @@ async def api_list_tasks() -> list[TaskResponse]:
 async def api_create_task(body: dict) -> TaskResponse:
     """Create a new task in Supabase."""
     client = get_supabase()
-    insert_data = {"title": body["title"], "description": body["description"], "status": body.get("status", "pending")}
+    insert_data = {
+        "title": body["title"],
+        "description": body["description"],
+        "organization_id": body["organization_id"],
+        "status": "in_progress",
+        "assigned_at": datetime.now().isoformat(),
+    }
     response = client.table("tasks").insert(insert_data).execute()
     row = response.data[0]
     return TaskResponse(**{**row, "id": str(row["id"])})
@@ -404,6 +531,25 @@ async def api_get_task(task_id: str) -> TaskResponse:
     response = client.table("tasks").select("*").eq("id", task_id).single().execute()
     row = response.data
     return TaskResponse(**{**row, "id": str(row["id"])})
+
+
+@api_router.get("/tasks/linear/{session_id}")
+async def api_get_linear_task(session_id: str) -> TaskResponse | None:
+    """Get a task by Linear session ID."""
+    client = get_supabase()
+    response = client.table("tasks").select("*").eq("linear_session_id", session_id).order("created_at", desc=True).limit(1).execute()
+    if not response.data:
+        return None
+    row = response.data[0]
+    return TaskResponse(**{**row, "id": str(row["id"])})
+
+
+@api_router.get("/tasks/linear/workspace/{workspace_id}")
+async def api_list_linear_tasks(workspace_id: str) -> list[TaskResponse]:
+    """List all tasks for a Linear workspace."""
+    client = get_supabase()
+    response = client.table("tasks").select("*").eq("linear_workspace_id", workspace_id).order("created_at", desc=True).execute()
+    return [TaskResponse(**{**row, "id": str(row["id"])}) for row in response.data]
 
 
 @api_router.patch("/tasks/{task_id}")
@@ -458,6 +604,7 @@ Return JSON with "title" and "description" fields."""
     # Parse AI response
     try:
         import re
+
         cleaned = re.sub(r"```json\n?|\n?```", "", ai_text).strip()
         task_data = json.loads(cleaned)
         title = task_data.get("title", body.selected_text[:80])
@@ -590,9 +737,7 @@ async def api_infer_memory(body: MemoryInferRequest) -> MemoryInferResponse:
         existing_result = search_memory(query=body.page_title, limit=5)
         existing_memories = json.loads(existing_result) if existing_result else []
         if existing_memories:
-            existing_context = "\n".join(
-                f"- {m.get('memory', '')}" for m in existing_memories[:5]
-            )
+            existing_context = "\n".join(f"- {m.get('memory', '')}" for m in existing_memories[:5])
 
     system_prompt = """You are a knowledge extraction assistant. Analyze the provided page content and suggest 2-4 specific, actionable memories worth saving.
 
@@ -638,9 +783,7 @@ Page content:
     result_text = response.choices[0].message.content or "{}"
     result_data = json.loads(result_text)
 
-    suggestions = [
-        MemorySuggestion(**s) for s in result_data.get("suggestions", [])
-    ]
+    suggestions = [MemorySuggestion(**s) for s in result_data.get("suggestions", [])]
 
     return MemoryInferResponse(
         suggestions=suggestions,
@@ -660,13 +803,15 @@ async def api_list_agents() -> list[AgentResponse]:
             config = agent.config
             model_arg = config.args.get("model")
             model_default = model_arg.default if model_arg and model_arg.default else "gpt-5"
-            result.append(AgentResponse(
-                name=config.agent_key,
-                model=str(model_default),
-                description=config.description or f"Execute {config.agent_key} agent",
-                capabilities=config.capabilities,
-                status="online",
-            ))
+            result.append(
+                AgentResponse(
+                    name=config.agent_key,
+                    model=str(model_default),
+                    description=config.description or f"Execute {config.agent_key} agent",
+                    capabilities=config.capabilities,
+                    status="online",
+                )
+            )
         except Exception as e:
             logger.warning(f"Failed to load agent from {json_file}: {e}")
             continue
@@ -677,9 +822,11 @@ async def api_list_agents() -> list[AgentResponse]:
 # Include API router after all routes are defined
 api_app.include_router(api_router)
 
-# Include webhook router
-webhook_router = create_github_webhook_router(get_supabase)
-api_app.include_router(webhook_router)
+# Include webhook routers
+github_webhook_router = create_github_webhook_router(get_supabase)
+linear_webhook_router = create_linear_webhook_router(get_supabase)
+api_app.include_router(github_webhook_router)
+api_app.include_router(linear_webhook_router)
 
 
 async def main_http() -> None:
@@ -688,17 +835,30 @@ async def main_http() -> None:
     logger.info(f"Starting combined MCP + API server on http://0.0.0.0:{port}")
 
     # Create MCP ASGI app with proper path
-    mcp_app = mcp.http_app(path='/mcp')
+    mcp_app = mcp.http_app(path="/mcp")
 
     # Combine MCP and REST routes with proper lifespan
     combined_app = FastAPI(
         title="Glyx MCP + REST API",
         routes=[
-            *mcp_app.routes,    # MCP protocol at /mcp
-            *api_app.routes,    # REST API routes
+            *mcp_app.routes,  # MCP protocol at /mcp
+            *api_app.routes,  # REST API routes
         ],
         lifespan=mcp_app.lifespan,  # Essential for MCP session management
     )
+
+    # Exception handlers must be on combined_app (not api_app) to work
+    @combined_app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        logger.error(f"[VALIDATION ERROR] {request.method} {request.url.path}")
+        for error in exc.errors():
+            logger.error(f"  {error['loc']}: {error['msg']} (type={error['type']})")
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+    @combined_app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception):
+        logger.exception(f"[UNHANDLED ERROR] {request.method} {request.url.path}: {exc}")
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
 
     # Add CORS middleware to combined app
     # Note: Chrome extensions use chrome-extension:// origins which can't be allowlisted

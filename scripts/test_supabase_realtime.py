@@ -47,8 +47,8 @@ def subscribe_to_inserts(
     on_payload: Callable[[Dict[str, Any]], None],
 ) -> Any:
     """
- Sure: subscribe to postgres INSERT changes for a given table.
- Returns the channel object.
+    Sure: subscribe to postgres INSERT changes for a given table.
+    Returns the channel object.
     """
     channel = client.channel(f"realtime-{table}-inserts")
     # The supabase-py v2 API accepts a dict filter for postgres_changes
@@ -63,8 +63,8 @@ def subscribe_to_inserts(
 
 def insert_test_row(client: Client, table: str) -> dict[str, Any]:
     """
- Insert a test row into the organizations table matching the API's expected shape.
- """
+    Insert a test row into the organizations table matching the API's expected shape.
+    """
     now = datetime.utcnow().isoformat()
     name = f"realtime-test-{int(time.time())}"
     data = {
@@ -132,4 +132,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
