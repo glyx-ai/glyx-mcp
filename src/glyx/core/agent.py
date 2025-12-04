@@ -11,11 +11,75 @@ from time import time
 from typing import Any, AsyncGenerator, Literal
 
 from pydantic import BaseModel, Field, field_validator
+from supabase import create_client
 
+from glyx.mcp.models.cursor import (
+    BaseCursorEvent,
+    CursorThinkingEvent,
+    CursorToolCallEvent,
+    parse_cursor_event,
+)
+from glyx.mcp.models.response import (
+    BaseResponseEvent,
+    parse_response_event,
+    summarize_tool_activity,
+)
+from glyx.mcp.settings import settings
 from glyx.mcp.websocket_manager import broadcast_event
 
 logger = logging.getLogger(__name__)
 
+
+class ActivityType(str, Enum):
+    """Activity types for the activity feed."""
+    MESSAGE = "message"
+    CODE = "code"
+    REVIEW = "review"
+    DEPLOYMENT = "deployment"
+    ERROR = "error"
+    TOOL_CALL = "tool_call"
+    THINKING = "thinking"
+
+
+class ActivityActor(str, Enum):
+    """Activity actor types."""
+    AGENT = "agent"
+    USER = "user"
+
+
+class ActivityMetadata(BaseModel):
+    """Structured metadata for activity records."""
+    tool_name: str | None = None
+    tool_args: dict[str, str] | None = None
+    file_path: str | None = None
+    duration_seconds: float | None = None
+    exit_code: int | None = None
+    full_text: str | None = None
+
+
+class ActivityCreate(BaseModel):
+    """Activity creation model for Supabase insert."""
+    org_id: str
+    org_name: str | None = None
+    actor: ActivityActor = ActivityActor.AGENT
+    type: ActivityType = ActivityType.MESSAGE
+    role: str | None = None
+    content: str
+    metadata: ActivityMetadata | None = None
+
+
+def get_supabase():
+    """Get Supabase client for activity creation."""
+    if not settings.supabase_url or not settings.supabase_anon_key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
+    return create_client(settings.supabase_url, settings.supabase_anon_key)
+
+
+async def create_activity(activity: ActivityCreate) -> None:
+    """Create an activity record in Supabase (non-blocking)."""
+    client = get_supabase()
+    client.table("activities").insert(activity.model_dump()).execute()
+    logger.info(f"[ACTIVITY] Created: {activity.type.value} - {activity.content[:50]}")
 
 
 # Custom Exceptions
@@ -292,8 +356,21 @@ class ComposableAgent:
             )
             raise
 
-    async def execute_stream(self, task_config: dict[str, Any], timeout: int = 30) -> AsyncGenerator[dict[str, Any], None]:
-        """Execute command and yield events in real-time (NDJSON parsing)."""
+    async def execute_stream(
+        self,
+        task_config: dict[str, Any],
+        timeout: int = 30,
+        org_id: str | None = None,
+        org_name: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Execute command and yield events in real-time (NDJSON parsing).
+
+        Args:
+            task_config: Agent task configuration (prompt, model, etc.)
+            timeout: Execution timeout in seconds
+            org_id: Organization ID for activity creation
+            org_name: Organization name for activity creation
+        """
         start_time = time()
         logger.info(f"[AGENT STREAM] Starting streaming execution for {self.config.agent_key}")
 
@@ -317,6 +394,17 @@ class ComposableAgent:
 
         logger.info(f"[AGENT STREAM CMD] {' '.join(cmd)}")
 
+        # Create "started" activity
+        if org_id:
+            task_title = task_config.get("prompt", "").split("\n")[0][:100]
+            asyncio.create_task(create_activity(ActivityCreate(
+                org_id=org_id,
+                org_name=org_name,
+                content=task_title or "Task started",
+                type=ActivityType.MESSAGE,
+                role=self.config.agent_key,
+            )))
+
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.DEVNULL,
@@ -334,13 +422,18 @@ class ComposableAgent:
                     line_text = line.decode().rstrip()
                     if line_text:
                         try:
-                            event = json.loads(line_text)
+                            raw_event = json.loads(line_text)
+                            # Use typed cursor event parsing for cursor-agent
+                            parsed_event = parse_cursor_event(raw_event)
                             await event_queue.put({
                                 "type": "agent_event",
-                                "event": event,
+                                "event": parsed_event,
                                 "timestamp": datetime.now().isoformat()
                             })
-                            logger.info(f"[AGENT STREAM EVENT] {event.get('type', 'unknown')}")
+                            if parsed_event.type == "thinking":
+                                logger.debug(f"[AGENT STREAM EVENT] thinking")
+                            else:
+                                logger.info(f"[AGENT STREAM EVENT] {parsed_event.type}")
                         except json.JSONDecodeError:
                             await event_queue.put({
                                 "type": "agent_output",
@@ -373,23 +466,110 @@ class ComposableAgent:
             asyncio.create_task(wait_for_process())
         ]
 
+        # Thinking aggregation state
+        thinking_buffer: list[str] = []
+        thinking_start: float | None = None
+
         try:
             while True:
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
-                    yield event
+                    typed_event = event.get("event") if isinstance(event, dict) else None
+
+                    # Serialize Pydantic models for the public event
+                    if isinstance(typed_event, (BaseCursorEvent, BaseResponseEvent)):
+                        public_event = {**event, "event": typed_event.model_dump(mode="json")}
+                    else:
+                        public_event = event
+
+                    yield public_event
+
+                    # Create activity for tool call events using typed payloads
+                    if org_id and isinstance(typed_event, CursorToolCallEvent):
+                        tool_name = typed_event.get_tool_name()
+                        preview = typed_event.get_preview()
+                        file_path = typed_event.get_file_path() if hasattr(typed_event, 'get_file_path') else None
+                        asyncio.create_task(create_activity(ActivityCreate(
+                            org_id=org_id,
+                            org_name=org_name,
+                            content=tool_name,
+                            type=ActivityType.TOOL_CALL,
+                            role=self.config.agent_key,
+                            metadata=ActivityMetadata(
+                                tool_name=tool_name,
+                                file_path=file_path or preview,
+                            ),
+                        )))
+                    elif org_id and isinstance(typed_event, BaseResponseEvent):
+                        # Fallback for non-cursor events
+                        summary = summarize_tool_activity(typed_event)
+                        if summary:
+                            tool_name, args_preview = summary
+                            asyncio.create_task(create_activity(ActivityCreate(
+                                org_id=org_id,
+                                org_name=org_name,
+                                content=tool_name,
+                                type=ActivityType.TOOL_CALL,
+                                role=self.config.agent_key,
+                                metadata=ActivityMetadata(
+                                    tool_name=tool_name,
+                                    file_path=args_preview,
+                                ),
+                            )))
+
+                    # Aggregate thinking events into single activity
+                    if org_id and isinstance(typed_event, CursorThinkingEvent):
+                        if typed_event.subtype == "delta":
+                            thinking_buffer.append(typed_event.text)
+                            if thinking_start is None:
+                                thinking_start = time()
+                        elif typed_event.subtype == "completed":
+                            if thinking_buffer:
+                                duration = time() - thinking_start if thinking_start else 0
+                                full_text = "".join(thinking_buffer)
+                                asyncio.create_task(create_activity(ActivityCreate(
+                                    org_id=org_id,
+                                    org_name=org_name,
+                                    content=full_text[:500],
+                                    type=ActivityType.THINKING,
+                                    role=self.config.agent_key,
+                                    metadata=ActivityMetadata(
+                                        duration_seconds=duration,
+                                        full_text=full_text,
+                                    ),
+                                )))
+                                thinking_buffer.clear()
+                                thinking_start = None
+
                 except asyncio.TimeoutError:
                     if process_done.is_set() and event_queue.empty():
                         break
 
             execution_time = time() - start_time
+            exit_code = process.returncode if process.returncode is not None else -1
             yield {
                 "type": "agent_complete",
-                "exit_code": process.returncode if process.returncode is not None else -1,
+                "exit_code": exit_code,
                 "execution_time": execution_time,
                 "timestamp": datetime.now().isoformat()
             }
-            logger.info(f"[AGENT STREAM COMPLETE] {execution_time:.2f}s (exit={process.returncode})")
+            logger.info(f"[AGENT STREAM COMPLETE] {execution_time:.2f}s (exit={exit_code})")
+
+            # Create completion activity
+            if org_id:
+                activity_type = ActivityType.DEPLOYMENT if exit_code == 0 else ActivityType.ERROR
+                content = "Task completed" if exit_code == 0 else "Task failed"
+                asyncio.create_task(create_activity(ActivityCreate(
+                    org_id=org_id,
+                    org_name=org_name,
+                    content=content,
+                    type=activity_type,
+                    role=self.config.agent_key,
+                    metadata=ActivityMetadata(
+                        duration_seconds=execution_time,
+                        exit_code=exit_code,
+                    ),
+                )))
 
         except asyncio.TimeoutError:
             process.kill()
@@ -400,6 +580,19 @@ class ComposableAgent:
                 "timestamp": datetime.now().isoformat()
             }
             logger.error(f"[AGENT STREAM TIMEOUT] Killed after {timeout}s")
+
+            # Create timeout activity
+            if org_id:
+                asyncio.create_task(create_activity(ActivityCreate(
+                    org_id=org_id,
+                    org_name=org_name,
+                    content="Task timed out",
+                    type=ActivityType.ERROR,
+                    role=self.config.agent_key,
+                    metadata=ActivityMetadata(
+                        duration_seconds=float(timeout),
+                    ),
+                )))
         finally:
             for task in tasks:
                 if not task.done():

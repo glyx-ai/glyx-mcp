@@ -12,9 +12,9 @@ Add visual inspection capabilities for Product/QA agents in the organization hie
 ## Architecture
 
 ### Phase 1: Screenshot Capability ✅
-**Tool**: `shot-scraper` (Python CLI wrapping Playwright)
-**Config**: `src/glyx_mcp/config/shot_scraper.json`
-**Wrapper**: `src/glyx_mcp/tools/use_shot_scraper.py`
+**Tool**: `shot-scraper` (Python CLI wrapping Playwright)  
+**Config**: `agents/shot_scraper.json`  
+**Registration**: Auto-discovered via `discover_and_register_agents` (no manual wrapper required)
 
 **Capabilities**:
 - Full page screenshots
@@ -110,11 +110,10 @@ For cross-platform support, wrap in Docker:
 ```
 
 ## Next Steps
-1. ✅ Create shot_scraper.json config
-2. ✅ Add SHOT_SCRAPER to AgentKey enum
-3. ✅ Build use_shot_scraper.py wrapper
-4. ✅ Register in server.py
-5. ⏳ **CURRENT**: Verify shot-scraper is installed and works
-6. TODO: Write integration tests
-7. TODO: Add visual diff tool
-8. TODO: Build QA orchestrator agent
+1. ✅ Create `agents/shot_scraper.json` config
+2. ✅ Add `SHOT_SCRAPER` to `AgentKey` enum
+3. ✅ Verify auto-registration on server start
+4. ⏳ **CURRENT**: Verify shot-scraper is installed and works
+5. TODO: Write integration tests
+6. TODO: Add visual diff tool
+7. TODO: Build QA orchestrator agent

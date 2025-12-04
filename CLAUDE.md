@@ -42,7 +42,7 @@ Agents are JSON configs that map to CLI commands. The system transforms JSON →
 **Flow**: `AgentConfig (JSON) → ComposableAgent.execute() → subprocess → AgentResult`
 
 ```python
-# Agent configs: src/glyx_mcp/config/{agent}.json
+# Agent configs: agents/{agent}.json
 {
   "agent_name": {
     "command": "cli-tool",
@@ -53,28 +53,28 @@ Agents are JSON configs that map to CLI commands. The system transforms JSON →
 }
 
 # Usage
-agent = ComposableAgent.from_key(AgentKey.AIDER)
+agent = ComposableAgent.from_key(AgentKey.AIDER)  # from glyx.core.agent
 result: AgentResult = await agent.execute({"prompt": "...", "files": "..."})
 ```
 
 ### Key Components
 
-- **composable_agent.py**: Core execution engine
+- **core/agent.py**: Core execution engine (`src/glyx/core/agent.py`)
   - `AgentConfig`: Pydantic model for JSON configs
   - `AgentResult`: Structured subprocess output (stdout, stderr, exit_code, timing)
   - `ComposableAgent.execute()`: Builds CLI command, runs subprocess, handles timeouts
 
-- **config/*.json**: Agent definitions (aider, grok, claude, codex, etc.)
+- **agents/*.json**: Agent definitions (aider, grok, claude, codex, etc.)
   - Validated on load via Pydantic
   - Support positional args (`flag: ""`), bool flags, defaults
 
-- **tools/*.py**: MCP tool wrappers
-  - Thin wrappers around `ComposableAgent.execute()`
-  - Registered with FastMCP via `@mcp.tool()`
+- **core/registry.py**: Auto-discovers JSON agent configs and registers MCP tools
+  - No manual per-agent wrappers needed; tools are generated dynamically
 
-- **server.py**: FastMCP server entrypoint
+- **mcp/server.py**: FastMCP server entrypoint (`src/glyx/mcp/server.py`)
   - Tool registration
-  - Prompt registration (hardcoded: `agent_prompt`, `orchestrate_prompt`)
+  - Orchestrator tool (`orchestrate`) registration
+  - Optional REST API endpoints (health, memory, features, agents)
 
 ### Testing
 
@@ -96,10 +96,10 @@ E2E tests require:
 
 ## Adding New Agents
 
-1. Create config: `src/glyx_mcp/config/my_agent.json`
-2. Add enum: `AgentKey.MY_AGENT` in `composable_agent.py`
-3. Create tool: `src/glyx_mcp/tools/use_my_agent.py`
-4. Register: `mcp.tool(use_my_agent)` in `server.py`
+1. Create config: `agents/my_agent.json`
+2. Add enum (optional, for convenience): `AgentKey.MY_AGENT` in `src/glyx/core/agent.py`
+3. No wrapper needed: agents are auto-discovered via `discover_and_register_agents(...)`
+4. Run server: `glyx-mcp` (the tool `use_my_agent` will be available automatically)
 5. Test: Add to `tests/test_config_validation.py`
 
 ## MCP Integration

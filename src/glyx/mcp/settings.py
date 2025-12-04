@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     supabase_anon_key: str | None = None
     supabase_service_role_key: str | None = None
 
+    # GitHub App Configuration
+    github_app_id: str | None = None
+    github_app_private_key: str | None = None
+    github_app_client_id: str | None = None
+    github_app_client_secret: str | None = None
+    github_webhook_secret: str | None = None
+    github_app_slug: str = "julian-e-acc"
+
     # Model Configuration
     default_orchestrator_model: str = "gpt-5"
     default_aider_model: str = "gpt-5"
@@ -40,6 +48,13 @@ class Settings(BaseSettings):
     # Docker Configuration
     container_name: str = "glyx-mcp"
 
+    # Auth / JWT Configuration
+    jwt_secret_key: str = "change-me-in-prod"
+    jwt_algorithm: str = "HS256"
+    access_token_expires_minutes: int = 15
+    refresh_token_expires_days: int = 7
+    # File path for storing auth state (users and refresh tokens) if no DB is configured
+    auth_store_path: str = ".data/auth_store.json"
 
 # Global settings instance
 settings = Settings()

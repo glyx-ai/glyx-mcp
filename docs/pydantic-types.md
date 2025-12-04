@@ -22,7 +22,7 @@ This document provides comprehensive documentation for all Pydantic models and s
 
 ### ArgSpec
 
-**Location**: `src/glyx_mcp/composable_agent.py:75`
+**Location**: `src/glyx/core/agent.py`
 
 Specification for a single command-line argument. Maps JSON config fields to CLI flags and handles type conversion.
 
@@ -74,7 +74,7 @@ Specification for a single command-line argument. Maps JSON config fields to CLI
 
 ### AgentConfig
 
-**Location**: `src/glyx_mcp/composable_agent.py:92`
+**Location**: `src/glyx/core/agent.py`
 
 Agent configuration loaded from JSON files. Defines how an agent maps to a CLI command.
 
@@ -111,7 +111,7 @@ Load and validate agent configuration from JSON file.
 
 **Example:**
 ```python
-config = AgentConfig.from_file("src/glyx_mcp/config/aider.json")
+config = AgentConfig.from_file("agents/aider.json")
 ```
 
 #### File Format Example
@@ -141,7 +141,7 @@ config = AgentConfig.from_file("src/glyx_mcp/config/aider.json")
 
 ### TaskConfig
 
-**Location**: `src/glyx_mcp/composable_agent.py:115`
+**Location**: `src/glyx/core/agent.py`
 
 Task configuration for agent execution. Validated with Pydantic and passed to `ComposableAgent.execute()`.
 
@@ -181,7 +181,7 @@ task_dict = {
 
 ### AgentResult
 
-**Location**: `src/glyx_mcp/composable_agent.py:51`
+**Location**: `src/glyx/core/agent.py`
 
 **Note**: This is a `@dataclass`, not a Pydantic model, but documented here for completeness.
 
@@ -224,7 +224,7 @@ else:
 
 ### AgentTask
 
-**Location**: `src/glyx_mcp/agents/orchestrator.py:25`
+**Location**: `src/glyx/mcp/orchestration/orchestrator.py`
 
 A task to be executed by a specific agent as part of an orchestration plan.
 
@@ -254,7 +254,7 @@ task = AgentTask(
 
 ### ExecutionPlan
 
-**Location**: `src/glyx_mcp/agents/orchestrator.py:33`
+**Location**: `src/glyx/mcp/orchestration/orchestrator.py`
 
 Plan for executing multiple agents in sequence. Created by GPT-5 during orchestration planning.
 
@@ -289,7 +289,7 @@ plan = ExecutionPlan(
 
 ### OrchestratorResult
 
-**Location**: `src/glyx_mcp/agents/orchestrator.py:40`
+**Location**: `src/glyx/mcp/orchestration/orchestrator.py`
 
 Complete result from orchestrator execution including plan, individual agent results, and synthesis.
 
@@ -330,48 +330,6 @@ if result.success:
         print(f"{agent_result['agent']}: {agent_result['success']}")
 else:
     print(f"Failed: {result.error}")
-```
-
----
-
-## Prompt Configuration
-
-### PromptConfig
-
-**Location**: `src/glyx_mcp/prompt_config.py:15`
-
-Configuration for which MCP prompts are enabled in the server.
-
-#### Fields
-
-| Field | Type | Default | Required | Description |
-|-------|------|---------|----------|-------------|
-| `enabled_prompts` | `list[str]` | `["agent"]` | No | List of prompt names to enable. |
-
-#### Default Behavior
-
-- If no config file exists, only the `"agent"` prompt is enabled
-- Config file location: `.glyx-mcp-prompts.json` (current directory or home directory)
-
-#### Usage Example
-
-**Config File** (`.glyx-mcp-prompts.json`):
-```json
-{
-  "enabled_prompts": ["agent", "orchestrate", "aider"]
-}
-```
-
-**Code**:
-```python
-from glyx_mcp.prompt_config import load_prompt_config, is_prompt_enabled
-
-config = load_prompt_config()
-print(config.enabled_prompts)  # ["agent", "orchestrate", "aider"]
-
-if is_prompt_enabled("orchestrate"):
-    # Register orchestrate prompt
-    pass
 ```
 
 ---
@@ -456,10 +414,10 @@ Configuration:
 ### Loading and Validating Agent Configs
 
 ```python
-from glyx_mcp.composable_agent import AgentConfig, AgentKey, ComposableAgent
+from glyx.core.agent import AgentConfig, AgentKey, ComposableAgent
 
 # From file
-config = AgentConfig.from_file("config/aider.json")
+config = AgentConfig.from_file("agents/aider.json")
 
 # From agent key (enum)
 agent = ComposableAgent.from_key(AgentKey.AIDER)
@@ -468,7 +426,7 @@ agent = ComposableAgent.from_key(AgentKey.AIDER)
 ### Executing with Validation
 
 ```python
-from glyx_mcp.composable_agent import TaskConfig
+from glyx.core.agent import TaskConfig
 
 # Pydantic validates on construction
 task = TaskConfig(
@@ -482,7 +440,7 @@ result = await agent.execute(task.model_dump(), timeout=300)
 ### Orchestration Flow
 
 ```python
-from glyx_mcp.agents.orchestrator import Orchestrator, OrchestratorResult
+from glyx.mcp.orchestration.orchestrator import Orchestrator, OrchestratorResult
 
 orchestrator = Orchestrator()
 result: OrchestratorResult = await orchestrator.orchestrate(
@@ -514,7 +472,7 @@ except ValidationError as e:
 ### Runtime Errors
 
 ```python
-from glyx_mcp.composable_agent import (
+from glyx.core.agent import (
     AgentError,
     AgentTimeoutError,
     AgentExecutionError,
@@ -554,7 +512,7 @@ def test_task_config_defaults():
 ### Mock Data
 
 ```python
-from glyx_mcp.agents.orchestrator import AgentTask, ExecutionPlan
+from glyx.mcp.orchestration.orchestrator import AgentTask, ExecutionPlan
 
 # Create test data
 mock_plan = ExecutionPlan(
@@ -575,6 +533,6 @@ mock_plan = ExecutionPlan(
 
 - [Pydantic Documentation](https://docs.pydantic.dev/)
 - [CLAUDE.md](../CLAUDE.md) - Project guidelines
-- [src/glyx_mcp/composable_agent.py](../src/glyx_mcp/composable_agent.py) - Core types
-- [src/glyx_mcp/agents/orchestrator.py](../src/glyx_mcp/agents/orchestrator.py) - Orchestrator types
+- [src/glyx/core/agent.py](../src/glyx/core/agent.py) - Core types
+- [src/glyx/mcp/orchestration/orchestrator.py](../src/glyx/mcp/orchestration/orchestrator.py) - Orchestrator types
 - [tests/test_config_validation.py](../tests/test_config_validation.py) - Validation tests

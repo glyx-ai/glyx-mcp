@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.0.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
+    "pydantic-settings>=2.0.0",
     "openai>=1.0.0",
     "langfuse>=2.0.0",
     "python-dotenv>=1.0.0",
@@ -20,6 +21,8 @@ dependencies = [
     "mem0ai>=1.0.0",
     "shot-scraper>=1.8",
     "supabase>=2.0.0",
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
 ]
 
 [project.optional-dependencies]
@@ -33,7 +36,7 @@ dev = [
 
 [project.scripts]
 glyx-mcp = "glyx.mcp.server:main"
-glyx-mcp-http = "glyx.mcp.server:main_http"
+glyx-mcp-http = "glyx.mcp.server:run_http"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

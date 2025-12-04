@@ -12,6 +12,22 @@
 **Lint**: `ruff check src/`  
 **Client integration**: `uv run pytest tests/test_client_integration.py -vv -ss`
 
+## Available Agents
+
+Auto-discovered from JSON in `agents/` and exposed as MCP tools (`use_{agent_key}`):
+
+- `aider`
+- `claude`
+- `codex`
+- `cursor`
+- `deepseek_r1`
+- `gemini`
+- `grok`
+- `kimi_k2`
+- `opencode`
+- `shot_scraper`
+- `zilliz`
+
 ## Code Style Guidelines
 
 - **Python version**: 3.11 minimum
@@ -22,5 +38,4 @@
 - **Imports**: Always at top of file
 - **Error handling**: No defensive programming, prefer flat expressive style
 - **Coverage**: 40% minimum threshold
-- **Naming**: Follow existing patterns in codebase</content>
-<parameter name="filePath">/home/parallels/glyx-mcp/AGENTS.md
+- **Naming**: Follow existing patterns in codebase

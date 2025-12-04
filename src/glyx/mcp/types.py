@@ -8,6 +8,9 @@ class StreamCursorRequest(BaseModel):
     prompt: str
     model: str = "gpt-5"
     conversation_id: str | None = None
+    task_id: str | None = None
+    organization_id: str | None = None
+    organization_name: str | None = None
 
 
 class AgentResponse(BaseModel):
@@ -53,3 +56,63 @@ class SearchMemoryRequest(BaseModel):
     query: str
     category: str | None = None
     limit: int = 10
+
+
+class AuthSignUpRequest(BaseModel):
+    """Request model for sign up."""
+    email: str
+    password: str
+    metadata: dict = Field(default_factory=dict)
+
+
+class AuthSignInRequest(BaseModel):
+    """Request model for sign in."""
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    """Response model for auth operations."""
+    user_id: str | None = None
+    email: str | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    expires_at: int | None = None
+
+
+class SmartTaskRequest(BaseModel):
+    """Request model for AI-powered smart task creation."""
+    selected_text: str
+    page_url: str | None = None
+    page_title: str | None = None
+
+
+class TaskResponse(BaseModel):
+    """Response model for task."""
+    id: str
+    title: str
+    description: str
+    status: str
+    organization_id: str | None = None
+    created_at: str
+
+
+class MemoryInferRequest(BaseModel):
+    """Request model for AI-powered memory inference."""
+    page_content: str
+    page_url: str | None = None
+    page_title: str | None = None
+    user_context: str | None = None
+
+
+class MemorySuggestion(BaseModel):
+    """A suggested memory to save."""
+    content: str
+    category: str
+    reason: str
+
+
+class MemoryInferResponse(BaseModel):
+    """Response model for memory inference."""
+    suggestions: list[MemorySuggestion]
+    analysis: str

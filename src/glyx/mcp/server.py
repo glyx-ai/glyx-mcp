@@ -2,55 +2,74 @@
 
 from __future__ import annotations
 
-import logging
-import sys
-
-from fastmcp import FastMCP, Context
-from fastmcp.utilities.logging import get_logger
-from langfuse import Langfuse
-
-from pathlib import Path
 import asyncio
-import os
 import json
+import logging
+import os
+import sys
 from datetime import datetime
-from fastapi import FastAPI, WebSocket, APIRouter, HTTPException
+from pathlib import Path
+from typing import Any
+
+import uvicorn
+from fastapi import APIRouter, FastAPI, Header, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-import uvicorn
+from fastmcp import Context, FastMCP
+from fastmcp.utilities.logging import get_logger
+from langfuse import Langfuse
+from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
+from openai import AsyncOpenAI
 from supabase import create_client
 
-from glyx.mcp.websocket_manager import manager as ws_manager
-from glyx.core.agent import ComposableAgent, AgentKey
-from glyx.mcp.types import (
-    StreamCursorRequest,
-    AgentResponse,
-    OrganizationCreate,
-    OrganizationResponse,
-    SaveMemoryRequest,
-    SearchMemoryRequest,
+from glyx.core.agent import AgentKey, ComposableAgent
+from glyx.core.pipelines import (
+    Feature,
+    FeatureCreate,
+    FeatureUpdate,
+    Pipeline,
+    delete_feature,
+    get_feature,
+    list_features,
+    save_feature,
 )
 from glyx.core.registry import discover_and_register_agents
+from glyx.mcp.models.response import BaseResponseEvent, StreamEventType, parse_response_event
 from glyx.mcp.orchestration.orchestrator import Orchestrator
 from glyx.mcp.settings import settings
+from glyx.mcp.tools.agent_crud import (
+    create_agent,
+    delete_agent,
+    get_agent,
+    list_agents,
+)
 from glyx.mcp.tools.interact_with_user import ask_user
+from glyx.mcp.tools.session_tools import (
+    get_session_messages,
+    list_sessions,
+)
 from glyx.mcp.tools.use_memory import (
     save_memory,
     search_memory,
 )
-from glyx.mcp.tools.session_tools import (
-    list_sessions,
-    get_session_messages,
+from glyx.mcp.types import (
+    AgentResponse,
+    AuthResponse,
+    AuthSignInRequest,
+    AuthSignUpRequest,
+    MemoryInferRequest,
+    MemoryInferResponse,
+    MemorySuggestion,
+    OrganizationCreate,
+    OrganizationResponse,
+    SaveMemoryRequest,
+    SearchMemoryRequest,
+    SmartTaskRequest,
+    StreamCursorRequest,
+    TaskResponse,
 )
-from glyx.mcp.tools.agent_crud import (
-    create_agent,
-    list_agents,
-    delete_agent,
-    get_agent,
-)
-from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
-
+from glyx.mcp.webhooks.github import create_github_webhook_router
+from glyx.mcp.websocket_manager import manager as ws_manager
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -83,7 +102,6 @@ if settings.langfuse_public_key and settings.langfuse_secret_key:
         OpenAIAgentsInstrumentor().instrument()
 else:
     logger.info("Langfuse not configured. Tracing disabled.")
-
 
 
 # Configure FastMCP client logging (messages sent to MCP clients)
@@ -157,6 +175,41 @@ async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _wrap_agent_event(event_payload: Any, timestamp: str | None) -> dict[str, Any]:
+    base = {"type": StreamEventType.AGENT_EVENT.value, "event": event_payload}
+    match timestamp:
+        case str() as ts:
+            return {**base, "timestamp": ts}
+        case _:
+            return base
+
+
+def _normalize_inner_event(inner_event: Any) -> Any:
+    match inner_event:
+        case BaseResponseEvent() as typed:
+            return typed.model_dump(mode="json")
+        case dict() as mapping:
+            return parse_response_event(mapping).model_dump(mode="json")
+        case _:
+            return inner_event
+
+
+def _normalize_stream_payload(event: Any) -> Any:
+    match event:
+        case {"type": StreamEventType.AGENT_EVENT.value, "event": BaseResponseEvent() as typed, "timestamp": timestamp}:
+            return _wrap_agent_event(typed.model_dump(mode="json"), timestamp)
+        case {"type": StreamEventType.AGENT_EVENT.value, "event": BaseResponseEvent() as typed}:
+            return _wrap_agent_event(typed.model_dump(mode="json"), None)
+        case {"type": StreamEventType.AGENT_EVENT.value, "event": inner_event, "timestamp": timestamp}:
+            return _wrap_agent_event(_normalize_inner_event(inner_event), timestamp)
+        case {"type": StreamEventType.AGENT_EVENT.value, "event": inner_event}:
+            return _wrap_agent_event(_normalize_inner_event(inner_event), None)
+        case BaseResponseEvent() as typed:
+            return _wrap_agent_event(typed.model_dump(mode="json"), None)
+        case _:
+            return event
+
+
 @api_app.post("/stream/cursor")
 async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
     """Stream cursor agent output with real-time NDJSON events."""
@@ -166,22 +219,28 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
             prompt = body.prompt
             model = body.model
 
-            yield f"data: {json.dumps({'type': 'progress', 'message': '🚀 Starting cursor agent...', 'timestamp': datetime.now().isoformat()})}\n\n"
+            yield f"data: {json.dumps({'type': StreamEventType.PROGRESS.value, 'message': '🚀 Starting cursor agent...', 'timestamp': datetime.now().isoformat()})}\n\n"
 
             agent = ComposableAgent.from_key(AgentKey.CURSOR)
 
-            # Stream events in real-time
-            async for event in agent.execute_stream({
-                "prompt": prompt,
-                "model": model,
-                "force": True,
-                "output_format": "stream-json",
-            }, timeout=600):
-                yield f"data: {json.dumps(event)}\n\n"
+            # Stream events in real-time (activity creation handled inside execute_stream)
+            async for event in agent.execute_stream(
+                {
+                    "prompt": prompt,
+                    "model": model,
+                    "force": True,
+                    "output_format": "stream-json",
+                },
+                timeout=600,
+                org_id=body.organization_id,
+                org_name=body.organization_name,
+            ):
+                normalized = _normalize_stream_payload(event)
+                yield f"data: {json.dumps(normalized)}\n\n"
 
         except Exception as e:
             logger.exception("Stream cursor error")
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'timestamp': datetime.now().isoformat()})}\n\n"
+            yield f"data: {json.dumps({'type': StreamEventType.ERROR.value, 'error': str(e), 'timestamp': datetime.now().isoformat()})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -196,19 +255,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         pass
     finally:
         await ws_manager.disconnect(websocket)
-
-
-# Feature Pipeline API
-from glyx.core.pipelines import (
-    Feature,
-    FeatureCreate,
-    FeatureUpdate,
-    Pipeline,
-    get_feature,
-    list_features,
-    save_feature,
-    delete_feature,
-)
 
 
 @api_router.get("/features")
@@ -307,6 +353,200 @@ async def api_delete_organization(org_id: str) -> dict[str, str]:
     return {"status": "deleted"}
 
 
+# Tasks API
+SMART_TASK_SYSTEM_PROMPT = """You are a task creation assistant. Given selected text from a webpage, create a clear and actionable task.
+
+Return a JSON object with:
+- title: A concise task title (max 80 chars)
+- description: A detailed description of what needs to be done
+
+The task should be:
+- Actionable and specific
+- Based on the context provided
+- Professional in tone
+
+Return ONLY valid JSON, no markdown or explanation."""
+
+
+def get_openrouter_client() -> AsyncOpenAI:
+    """Get OpenRouter client."""
+    api_key = settings.openrouter_api_key
+    if not api_key:
+        raise HTTPException(status_code=500, detail="OpenRouter API key not configured")
+    return AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+    )
+
+
+@api_router.get("/tasks")
+async def api_list_tasks() -> list[TaskResponse]:
+    """List all tasks from Supabase."""
+    client = get_supabase()
+    response = client.table("tasks").select("*").order("created_at", desc=True).execute()
+    return [TaskResponse(**{**row, "id": str(row["id"])}) for row in response.data]
+
+
+@api_router.post("/tasks")
+async def api_create_task(body: dict) -> TaskResponse:
+    """Create a new task in Supabase."""
+    client = get_supabase()
+    insert_data = {"title": body["title"], "description": body["description"], "status": body.get("status", "pending")}
+    response = client.table("tasks").insert(insert_data).execute()
+    row = response.data[0]
+    return TaskResponse(**{**row, "id": str(row["id"])})
+
+
+@api_router.get("/tasks/{task_id}")
+async def api_get_task(task_id: str) -> TaskResponse:
+    """Get a task by ID."""
+    client = get_supabase()
+    response = client.table("tasks").select("*").eq("id", task_id).single().execute()
+    row = response.data
+    return TaskResponse(**{**row, "id": str(row["id"])})
+
+
+@api_router.patch("/tasks/{task_id}")
+async def api_update_task(task_id: str, body: dict) -> TaskResponse:
+    """Update a task."""
+    client = get_supabase()
+    update_data = {k: v for k, v in body.items() if v is not None}
+    response = client.table("tasks").update(update_data).eq("id", task_id).execute()
+    row = response.data[0]
+    return TaskResponse(**{**row, "id": str(row["id"])})
+
+
+@api_router.delete("/tasks/{task_id}")
+async def api_delete_task(task_id: str) -> dict[str, str]:
+    """Delete a task."""
+    client = get_supabase()
+    client.table("tasks").delete().eq("id", task_id).execute()
+    return {"status": "deleted"}
+
+
+@api_router.post("/tasks/smart")
+async def api_create_smart_task(body: SmartTaskRequest) -> TaskResponse:
+    """Create a task using AI to generate title and description from selected text."""
+    if not body.selected_text.strip():
+        raise HTTPException(status_code=400, detail="Selected text is required")
+
+    # Build prompt with context
+    user_prompt = f"""Create a task from this selected text:
+
+Selected text: "{body.selected_text}"
+{f'Page title: {body.page_title}' if body.page_title else ''}
+{f'Source URL: {body.page_url}' if body.page_url else ''}
+
+Return JSON with "title" and "description" fields."""
+
+    # Call OpenRouter API
+    openrouter = get_openrouter_client()
+    try:
+        response = await openrouter.chat.completions.create(
+            model="anthropic/claude-sonnet-4",
+            messages=[
+                {"role": "system", "content": SMART_TASK_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=500,
+        )
+        ai_text = response.choices[0].message.content or ""
+    except Exception as e:
+        logger.error(f"OpenRouter API error: {e}")
+        raise HTTPException(status_code=500, detail=f"AI generation failed: {e}")
+
+    # Parse AI response
+    try:
+        import re
+        cleaned = re.sub(r"```json\n?|\n?```", "", ai_text).strip()
+        task_data = json.loads(cleaned)
+        title = task_data.get("title", body.selected_text[:80])
+        description = task_data.get("description", body.selected_text)
+    except (json.JSONDecodeError, KeyError):
+        # Fallback if AI returns malformed JSON
+        title = body.selected_text[:80]
+        description = f'Task created from: "{body.selected_text}"'
+
+    # Add source URL to description
+    full_description = f"{description}\n\nSource: {body.page_url}" if body.page_url else description
+
+    # Create task in Supabase
+    supabase = get_supabase()
+    insert_data = {
+        "title": title,
+        "description": full_description,
+        "status": "pending",
+    }
+    response = supabase.table("tasks").insert(insert_data).execute()
+    row = response.data[0]
+
+    return TaskResponse(
+        id=str(row["id"]),
+        title=row["title"],
+        description=row["description"],
+        status=row["status"],
+        organization_id=row.get("organization_id"),
+        created_at=row["created_at"],
+    )
+
+
+# Auth API (Supabase Auth)
+@api_router.post("/auth/signup")
+async def api_auth_signup(body: AuthSignUpRequest) -> AuthResponse:
+    """Sign up a new user via Supabase Auth."""
+    client = get_supabase()
+    options = {"data": body.metadata} if body.metadata else None
+    response = client.auth.sign_up({"email": body.email, "password": body.password, "options": options})
+    user = response.user
+    session = response.session
+    return AuthResponse(
+        user_id=user.id if user else None,
+        email=user.email if user else None,
+        access_token=session.access_token if session else None,
+        refresh_token=session.refresh_token if session else None,
+        expires_at=session.expires_at if session else None,
+    )
+
+
+@api_router.post("/auth/signin")
+async def api_auth_signin(body: AuthSignInRequest) -> AuthResponse:
+    """Sign in a user via Supabase Auth."""
+    client = get_supabase()
+    response = client.auth.sign_in_with_password({"email": body.email, "password": body.password})
+    user = response.user
+    session = response.session
+    return AuthResponse(
+        user_id=user.id if user else None,
+        email=user.email if user else None,
+        access_token=session.access_token if session else None,
+        refresh_token=session.refresh_token if session else None,
+        expires_at=session.expires_at if session else None,
+    )
+
+
+@api_router.post("/auth/signout")
+async def api_auth_signout() -> dict[str, str]:
+    """Sign out the current user."""
+    client = get_supabase()
+    client.auth.sign_out()
+    return {"status": "signed_out"}
+
+
+@api_router.get("/auth/user")
+async def api_auth_get_user(authorization: str | None = Header(None)) -> AuthResponse:
+    """Get the current user from JWT token."""
+    client = get_supabase()
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    jwt = authorization[7:]
+    response = client.auth.get_user(jwt)
+    user = response.user
+    return AuthResponse(
+        user_id=user.id if user else None,
+        email=user.email if user else None,
+    )
+
+
 @api_router.post("/memory/save")
 async def api_save_memory(body: SaveMemoryRequest) -> dict[str, str]:
     """Save memory via REST endpoint."""
@@ -329,9 +569,83 @@ async def api_search_memory(body: SearchMemoryRequest) -> dict[str, list]:
         category=body.category,  # type: ignore
         limit=body.limit,
     )
-    import json
     memories = json.loads(result) if result else []
     return {"memories": memories}
+
+
+@api_router.post("/memory/infer")
+async def api_infer_memory(body: MemoryInferRequest) -> MemoryInferResponse:
+    """Use AI to analyze page content and suggest memories to save.
+
+    This endpoint:
+    1. Searches existing memories for context
+    2. Uses GPT to analyze the page content
+    3. Suggests relevant memories to save based on what's new/useful
+    """
+    client = AsyncOpenAI()
+
+    # Search existing memories for context
+    existing_context = ""
+    if body.page_title:
+        existing_result = search_memory(query=body.page_title, limit=5)
+        existing_memories = json.loads(existing_result) if existing_result else []
+        if existing_memories:
+            existing_context = "\n".join(
+                f"- {m.get('memory', '')}" for m in existing_memories[:5]
+            )
+
+    system_prompt = """You are a knowledge extraction assistant. Analyze the provided page content and suggest 2-4 specific, actionable memories worth saving.
+
+Focus on:
+- Technical patterns, APIs, or code examples
+- Architecture decisions or best practices
+- Key concepts or definitions
+- Useful commands or configurations
+
+For each suggestion:
+1. Extract the core information (be concise, 1-2 sentences)
+2. Assign a category: architecture, integrations, code_style_guidelines, project_id, observability, product, key_concept, or tasks
+3. Explain why this is worth remembering
+
+Respond in JSON format:
+{
+  "analysis": "Brief summary of what the page is about",
+  "suggestions": [
+    {"content": "...", "category": "...", "reason": "..."}
+  ]
+}"""
+
+    user_prompt = f"""Page: {body.page_title or 'Unknown'}
+URL: {body.page_url or 'N/A'}
+User context: {body.user_context or 'None provided'}
+
+Existing memories (avoid duplicating):
+{existing_context or 'None'}
+
+Page content:
+{body.page_content[:8000]}"""
+
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.3,
+    )
+
+    result_text = response.choices[0].message.content or "{}"
+    result_data = json.loads(result_text)
+
+    suggestions = [
+        MemorySuggestion(**s) for s in result_data.get("suggestions", [])
+    ]
+
+    return MemoryInferResponse(
+        suggestions=suggestions,
+        analysis=result_data.get("analysis", "Unable to analyze content"),
+    )
 
 
 @api_router.get("/agents")
@@ -363,10 +677,14 @@ async def api_list_agents() -> list[AgentResponse]:
 # Include API router after all routes are defined
 api_app.include_router(api_router)
 
+# Include webhook router
+webhook_router = create_github_webhook_router(get_supabase)
+api_app.include_router(webhook_router)
+
 
 async def main_http() -> None:
     """Run HTTP server with both MCP protocol and REST API."""
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 8000))
     logger.info(f"Starting combined MCP + API server on http://0.0.0.0:{port}")
 
     # Create MCP ASGI app with proper path
@@ -383,22 +701,26 @@ async def main_http() -> None:
     )
 
     # Add CORS middleware to combined app
+    # Note: Chrome extensions use chrome-extension:// origins which can't be allowlisted
+    # We use allow_origin_regex to permit them along with localhost
     combined_app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origin_regex=r"^chrome-extension://.*$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    config = uvicorn.Config(combined_app, host="0.0.0.0", port=port, log_level="info")
+    config = uvicorn.Config(combined_app, host="0.0.0.0", port=port, log_level="debug")
     server = uvicorn.Server(config)
     await server.serve()
 
 
+def run_http() -> None:
+    """Entry point for HTTP server command."""
+    asyncio.run(main_http())
+
+
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "--http":
-        asyncio.run(main_http())
-    else:
-        main()
+    asyncio.run(main_http())

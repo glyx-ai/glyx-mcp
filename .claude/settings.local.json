@@ -82,10 +82,31 @@
       "mcp__supabase__get_project_url",
       "mcp__supabase__get_anon_key",
       "mcp__supabase__execute_sql",
-      "Bash(gh api:*)"
+      "Bash(gh api:*)",
+      "WebFetch(domain:supabase.com)",
+      "mcp__supabase__search_docs",
+      "Bash(paste:*)",
+      "Bash(git -C /Users/telsiz/work/glyx-mcp log --all --oneline)",
+      "Bash(git -C /Users/telsiz/work/glyx-mcp remote:*)",
+      "Bash(git -C /Users/telsiz/work/glyx-mcp show:*)",
+      "Bash(git -C /Users/telsiz/work/glyx-mcp log --oneline landing/)",
+      "Bash(git -C /Users/telsiz/work/glyx-mcp log --all --full-history -- landing/)",
+      "Bash(git -C /Users/telsiz/work/glyx-mcp diff 8bca8c6~1 8bca8c6 -- landing/)",
+      "Bash(git -C /Users/telsiz/work/glyx-mcp status)",
+      "WebFetch(domain:www.shadcn.io)",
+      "Bash(npx shadcn@latest add https://21st.dev/r/ruixen.ui/navbar)",
+      "Bash(yes:*)",
+      "Bash(npx create-plasmo@latest:*)",
+      "Bash(pnpm install:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm dev --help:*)",
+      "Bash(pnpm build:extension:*)"
     ],
     "additionalDirectories": [
-      "/home/parallels/glyx-mcp-tasks/"
+      "/home/parallels/glyx-mcp-tasks/",
+      "/Users/telsiz/work/glyx/"
     ]
   },
   "enableAllProjectMcpServers": true,

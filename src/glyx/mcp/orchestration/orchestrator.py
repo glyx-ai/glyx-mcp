@@ -9,6 +9,8 @@ from agents import Agent, ModelSettings, Runner, function_tool
 from fastmcp import Context
 from pydantic import BaseModel, Field
 
+from datetime import datetime, timezone
+
 from glyx.core.agent import AgentKey, AgentResult, ComposableAgent
 from glyx.tasks.models.task import Task
 from glyx.mcp.orchestration.prompts import (
@@ -18,6 +20,7 @@ from glyx.mcp.orchestration.prompts import (
 from glyx.mcp.settings import settings
 from glyx.mcp.tools.use_memory import search_memory as search_memory_fn
 from glyx.mcp.tools.use_memory import save_memory as save_memory_fn
+from glyx.mcp.models.execution import ActivityInsert, ActivityType, EVENT_TO_ACTIVITY, EventType, TaskStatus, TaskUpdate
 from glyx.tasks.tools.task_tools import assign_task as assign_task_fn
 from glyx.tasks.tools.task_tools import create_task as create_task_fn
 from glyx.tasks.tools.task_tools import update_task as update_task_fn
@@ -174,17 +177,33 @@ update_task = function_tool(update_task_fn)
 class Orchestrator:
     """Orchestrates multiple AI agents using OpenAI Agents SDK."""
 
-    ctx: Context
+    ctx: Context | None
     agent: Agent
+    trace: any
+    langfuse: any
+    supabase: any
 
-    def __init__(self, ctx: Context, model: str | None = None) -> None:
-        """Initialize orchestrator with OpenAI Agents SDK.
+    def __init__(
+        self,
+        trace: any,
+        langfuse: any,
+        supabase: any,
+        ctx: Context | None = None,
+        model: str | None = None,
+    ) -> None:
+        """Initialize orchestrator with dependencies.
 
         Args:
-            ctx: FastMCP context for progress reporting (required)
+            trace: Langfuse trace instance
+            langfuse: Langfuse client
+            supabase: Supabase client
+            ctx: FastMCP context for progress reporting (optional)
             model: Model to use for orchestration (defaults to settings)
         """
         self.ctx = ctx
+        self.trace = trace
+        self.langfuse = langfuse
+        self.supabase = supabase
         orchestrator_model = model or settings.default_orchestrator_model
 
         # Format instructions with task schema
@@ -268,6 +287,108 @@ class Orchestrator:
                 update_task,
             ],
         )
+
+    async def execute_cursor_task(
+        self,
+        task_id: str,
+        prompt: str,
+        model: str,
+        organization_id: str,
+        organization_name: str,
+    ) -> None:
+        import time as _time
+
+        generation = self.trace.generation(name="cursor-execution", model=model, input=prompt)
+        agent = ComposableAgent.from_key(AgentKey.CURSOR)
+        output_chunks: list[str] = []
+
+        # Track thinking state for duration calculation
+        thinking_start: float | None = None
+        thinking_content: list[str] = []
+
+        async for event in agent.execute_stream({
+            "prompt": prompt,
+            "model": model,
+            "force": True,
+            "output_format": "stream-json",
+        }, timeout=600):
+            event_type_str = event.get('type')
+            event_text = event.get('text', '')
+            event_type = EventType(event_type_str) if event_type_str in EventType._value2member_map_ else None
+
+            if event_type == EventType.ASSISTANT and event_text:
+                output_chunks.append(event_text)
+
+            # Handle thinking events with duration tracking
+            if event_type == EventType.THINKING:
+                if thinking_start is None:
+                    thinking_start = _time.time()
+                if event_text:
+                    thinking_content.append(event_text)
+            elif thinking_start is not None and event_type != EventType.THINKING:
+                # Thinking ended, save the accumulated thinking activity
+                duration = _time.time() - thinking_start
+                full_text = '\n'.join(thinking_content)
+                summary = full_text[:100] + '...' if len(full_text) > 100 else full_text
+
+                activity = ActivityInsert(
+                    org_id=organization_id,
+                    org_name=organization_name,
+                    organization_id=organization_id,
+                    type=ActivityType.THINKING,
+                    content=summary,
+                    role="assistant",
+                    metadata={
+                        "full_text": full_text,
+                        "duration_seconds": round(duration, 2),
+                        "agent_name": "Cursor",
+                    },
+                )
+                self.supabase.table('activities').insert(activity.model_dump()).execute()
+
+                # Reset thinking state
+                thinking_start = None
+                thinking_content = []
+
+            # Handle non-thinking events normally
+            if event_type in EVENT_TO_ACTIVITY and event_type != EventType.THINKING:
+                activity = ActivityInsert(
+                    org_id=organization_id,
+                    org_name=organization_name,
+                    organization_id=organization_id,
+                    type=EVENT_TO_ACTIVITY[event_type],
+                    content=event_text or f"{event_type.value} event",
+                    role="assistant",
+                )
+                self.supabase.table('activities').insert(activity.model_dump()).execute()
+
+        # Handle any remaining thinking content at end of stream
+        if thinking_start is not None and thinking_content:
+            duration = _time.time() - thinking_start
+            full_text = '\n'.join(thinking_content)
+            summary = full_text[:100] + '...' if len(full_text) > 100 else full_text
+
+            activity = ActivityInsert(
+                org_id=organization_id,
+                org_name=organization_name,
+                organization_id=organization_id,
+                type=ActivityType.THINKING,
+                content=summary,
+                role="assistant",
+                metadata={
+                    "full_text": full_text,
+                    "duration_seconds": round(duration, 2),
+                    "agent_name": "Cursor",
+                },
+            )
+            self.supabase.table('activities').insert(activity.model_dump()).execute()
+
+        generation.end(output=''.join(output_chunks))
+        self.trace.update(output='Task completed')
+        self.langfuse.flush()
+
+        update = TaskUpdate(status=TaskStatus.COMPLETED, completed_at=datetime.now(timezone.utc).isoformat())
+        self.supabase.table('tasks').update(update.model_dump()).eq('id', task_id).execute()
 
     async def orchestrate(self, task: str) -> OrchestratorResult:
         """Orchestrate execution of a complex task using multiple agents.
