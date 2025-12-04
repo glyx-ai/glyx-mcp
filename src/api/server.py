@@ -1,0 +1,226 @@
+"""Combined FastAPI server for MCP protocol and REST API."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from pathlib import Path
+
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+import importlib.util
+import glyx_python_sdk
+
+# Import mcp server - import directly from file path to avoid conflict with installed 'mcp' package
+from pathlib import Path
+
+_mcp_server_path = Path(__file__).parent.parent / "mcp" / "server.py"
+_spec = importlib.util.spec_from_file_location("mcp_server_module", _mcp_server_path)
+_mcp_server_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mcp_server_module)
+mcp = _mcp_server_module.mcp
+
+# Import API routes
+from api.routes import (
+    agents,
+    auth,
+    deployments,
+    health,
+    memory,
+    organizations,
+    root,
+    sequences,
+    streaming,
+    tasks,
+    workflows,
+)
+
+# Get agents directory from SDK package location
+_sdk_path = Path(glyx_python_sdk.__file__).parent.parent
+agents_dir = _sdk_path / "agents"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    force=True,
+)
+
+logger = logging.getLogger(__name__)
+
+# Create FastAPI app for REST API
+api_app = FastAPI(
+    title="Glyx AI API",
+    description="""
+# Glyx AI API
+
+Composable AI agent framework with FastMCP server integration.
+
+## Features
+
+- **Multi-Agent Orchestration**: Coordinate multiple AI agents for complex tasks
+- **Real-time Streaming**: WebSocket and SSE support for live updates
+- **Memory Management**: Store and retrieve project context with semantic search
+- **Feature Pipelines**: Multi-stage workflows for feature development
+- **Task Management**: AI-powered task creation and tracking
+- **Organization Management**: Multi-tenant support with Supabase
+- **Health Monitoring**: Comprehensive health checks and metrics
+
+## Authentication
+
+Most endpoints require authentication via Supabase Auth. Include the access token in the Authorization header:
+
+```
+Authorization: Bearer <access_token>
+```
+
+## Environment Setup
+
+Required environment variables:
+- `OPENAI_API_KEY` - OpenAI API key
+- `ANTHROPIC_API_KEY` - Anthropic API key
+- `OPENROUTER_API_KEY` - OpenRouter API key
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_ANON_KEY` - Supabase anon key
+- `MEM0_API_KEY` - Mem0 API key for memory management
+
+## Resources
+
+- [GitHub Repository](https://github.com/htelsiz/glyx-ai)
+- [SDK Documentation](https://github.com/htelsiz/glyx-ai/blob/main/docs/SDK.md)
+- [Deployment Guide](https://github.com/htelsiz/glyx-ai/blob/main/docs/DEPLOYMENT.md)
+    """,
+    version="0.1.0",
+    contact={
+        "name": "Glyx Team",
+        "url": "https://github.com/htelsiz/glyx-ai",
+        "email": "hakantelsiz@utexas.edu",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    openapi_tags=[
+        {"name": "Health", "description": "Health check and monitoring endpoints"},
+        {"name": "Streaming", "description": "Real-time streaming endpoints for agent execution"},
+        {"name": "Features", "description": "Feature pipeline management for multi-stage development workflows"},
+        {"name": "Organizations", "description": "Organization management with Supabase backend"},
+        {"name": "Tasks", "description": "Task creation and management, including AI-powered smart tasks"},
+        {"name": "Authentication", "description": "User authentication via Supabase Auth"},
+        {"name": "Memory", "description": "Project memory management with semantic search (Mem0)"},
+        {"name": "Agents", "description": "Agent execution and management"},
+        {"name": "GitHub", "description": "GitHub integration and repository management"},
+        {"name": "Linear", "description": "Linear integration for issue tracking"},
+    ],
+)
+
+# Mount static files
+static_path = Path(__file__).parent.parent / "static"
+if static_path.exists():
+    api_app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
+# Get agents directory from SDK package location (same as MCP server)
+_sdk_path = Path(glyx_python_sdk.__file__).parent.parent
+agents_dir = _sdk_path / "agents"
+
+# Register API routes
+api_app.include_router(root.router)
+api_app.include_router(health.router)
+api_app.include_router(streaming.router)
+api_app.include_router(sequences.router)
+api_app.include_router(workflows.router)
+api_app.include_router(organizations.router)
+api_app.include_router(tasks.router)
+api_app.include_router(auth.router)
+api_app.include_router(memory.router)
+api_app.include_router(agents.router)
+api_app.include_router(deployments.router)
+
+# Register webhook routers
+from api.utils import get_supabase
+from api.webhooks import create_github_webhook_router, create_linear_webhook_router
+
+github_webhook_router = create_github_webhook_router(get_supabase)
+linear_webhook_router = create_linear_webhook_router(get_supabase)
+api_app.include_router(github_webhook_router)
+api_app.include_router(linear_webhook_router)
+
+# Set agents_dir for health metrics
+health.set_agents_dir(agents_dir)
+
+
+# Create combined app for HTTP server (MCP + REST API)
+def create_combined_app() -> FastAPI:
+    """Create combined FastAPI app with MCP protocol and REST API routes."""
+    # Create MCP ASGI app with proper path
+    mcp_app = mcp.http_app(path="/mcp")
+
+    # Combine MCP and REST routes with proper lifespan
+    combined_app = FastAPI(
+        title="Glyx AI - MCP + REST API",
+        description=api_app.description,
+        version=api_app.version,
+        contact=api_app.contact,
+        license_info=api_app.license_info,
+        openapi_tags=api_app.openapi_tags,
+        routes=[
+            *mcp_app.routes,  # MCP protocol at /mcp
+            *api_app.routes,  # REST API routes
+        ],
+        lifespan=mcp_app.lifespan,  # Essential for MCP session management
+        docs_url="/docs",
+        redoc_url="/redoc",
+    )
+
+    # Exception handlers
+    @combined_app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        logger.error(f"[VALIDATION ERROR] {request.method} {request.url.path}")
+        for error in exc.errors():
+            logger.error(f"  {error['loc']}: {error['msg']} (type={error['type']})")
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+    @combined_app.exception_handler(Exception)
+    async def general_exception_handler(request: Request, exc: Exception):
+        logger.exception(f"[UNHANDLED ERROR] {request.method} {request.url.path}: {exc}")
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
+
+    # Add CORS middleware
+    combined_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origin_regex=r"^chrome-extension://.*$",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    return combined_app
+
+
+# Expose combined app for uvicorn
+combined_app = create_combined_app()
+
+
+async def main_http() -> None:
+    """Run HTTP server with both MCP protocol and REST API."""
+    port = int(os.environ.get("PORT", 8000))
+    logger.info(f"Starting combined MCP + API server on http://0.0.0.0:{port}")
+
+    config = uvicorn.Config(combined_app, host="0.0.0.0", port=port, log_level="debug")
+    server = uvicorn.Server(config)
+    await server.serve()
+
+
+def run_http() -> None:
+    """Entry point for HTTP server command."""
+    asyncio.run(main_http())
+
+
+if __name__ == "__main__":
+    asyncio.run(main_http())

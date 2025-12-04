@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-glyx-python-sdk = { path = "packages/glyx-python-sdk", editable = true }
+glyx-python-sdk = { path = "src/python-sdk", editable = true }
 
 [project.optional-dependencies]
 dev = [
@@ -32,8 +32,8 @@ dev = [
 ]
 
 [project.scripts]
-glyx-mcp = "glyx.mcp.server:main"
-glyx-mcp-http = "glyx.mcp.server:run_http"
+glyx-mcp = "mcp.server:main"
+glyx-mcp-http = "api.server:run_http"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

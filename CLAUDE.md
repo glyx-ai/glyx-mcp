@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-glyx-mcp is a FastMCP server built on **glyx-python-sdk** that provides composable AI agent wrappers. 
+glyx-ai is a FastMCP server built on **glyx-python-sdk** that provides composable AI agent wrappers.
 
 **Architecture:**
 - **glyx-python-sdk** (v0.0.1): Core framework with agents, orchestration, memory, and pipelines
   - Published package: https://test.pypi.org/project/glyx-python-sdk/
-  - Location: `packages/glyx-python-sdk/`
+  - Location: `packages/sdk/`
   - Installed as local editable dependency
-- **glyx-mcp**: FastMCP/FastAPI server providing MCP tools, webhooks, and REST API
+- **glyx-ai**: FastMCP/FastAPI server providing MCP tools, webhooks, and REST API
   - Depends on glyx-python-sdk
   - Location: `src/glyx/`
 
@@ -30,8 +30,8 @@ glyx-mcp
 uv run pytest                      # Alternative with uv
 
 # Type checking & linting
-mypy src/
-ruff check src/
+mypy src/glyx/
+ruff check src/glyx/
 
 # Running Integration Tests
 `uv run pytest tests/test_opencode_agent.py -m integration`
@@ -72,7 +72,7 @@ result: AgentResult = await agent.execute({"prompt": "...", "files": "..."})
 
 ### Key Components
 
-**From glyx-python-sdk (packages/glyx-python-sdk/):**
+**From glyx-python-sdk (packages/sdk/):**
 - **agent.py**: Core execution engine
   - `AgentConfig`: Pydantic model for JSON configs
   - `AgentResult`: Structured subprocess output (stdout, stderr, exit_code, timing)
@@ -84,7 +84,7 @@ result: AgentResult = await agent.execute({"prompt": "...", "files": "..."})
 - **models/**: Type-safe Pydantic models (cursor events, response events, tasks)
 - **integrations/**: Linear, Supabase integrations
 
-**From glyx-mcp (src/glyx/):**
+**From glyx-ai (src/glyx/):**
 - **agents/*.json**: Agent definitions (aider, grok, claude, codex, etc.)
   - Validated on load via Pydantic
   - Support positional args (`flag: ""`), bool flags, defaults
@@ -131,12 +131,12 @@ Note: Core agent framework lives in glyx-python-sdk package.
 ```jsonc
 {
   "mcpServers": {
-    "glyx-mcp": {
+    "glyx-ai": {
       "command": "uv",
       "args": [
         "run",
         "--directory",
-        "/Users/telsiz/work/glyx-mcp",
+        "/Users/telsiz/work/glyx-ai",
         "fastmcp",
         "run",
         "src/glyx/mcp/server.py"

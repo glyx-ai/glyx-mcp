@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: dev
       network: host
     image: glyx:latest
     container_name: glyx-mcp-server

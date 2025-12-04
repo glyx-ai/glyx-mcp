@@ -414,7 +414,7 @@ Configuration:
 ### Loading and Validating Agent Configs
 
 ```python
-from glyx.core.agent import AgentConfig, AgentKey, ComposableAgent
+from glyx_python_sdk import AgentConfig, AgentKey, ComposableAgent
 
 # From file
 config = AgentConfig.from_file("agents/aider.json")
@@ -426,7 +426,7 @@ agent = ComposableAgent.from_key(AgentKey.AIDER)
 ### Executing with Validation
 
 ```python
-from glyx.core.agent import TaskConfig
+from glyx_python_sdk import TaskConfig
 
 # Pydantic validates on construction
 task = TaskConfig(
@@ -472,12 +472,8 @@ except ValidationError as e:
 ### Runtime Errors
 
 ```python
-from glyx.core.agent import (
-    AgentError,
-    AgentTimeoutError,
-    AgentExecutionError,
-    AgentConfigError
-)
+from glyx_python_sdk import AgentError
+from glyx_python_sdk.agent import AgentTimeoutError, AgentExecutionError, AgentConfigError
 
 try:
     result = await agent.execute(task_config)

@@ -1,4 +1,4 @@
-# glyx-mcp
+# glyx-ai
 
 Composable AI agent framework with a FastMCP server, exposing multiple agent tools (Aider, Grok, etc.) through the MCP protocol. Agents are driven by JSON configs and executed as subprocesses for reliability and observability.
 
@@ -30,7 +30,7 @@ MCP client example (Claude Desktop `claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "glyx-mcp": {
+    "glyx-ai": {
       "command": "docker",
       "args": ["compose", "run", "--rm", "glyx-mcp"],
       "env": {
@@ -147,8 +147,8 @@ If `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` are provided, Langfuse tracing is
 uv pip install -e ".[dev]"
 
 # Type check / lint
-mypy src/
-ruff check src/
+mypy src/glyx/
+ruff check src/glyx/
 
 # Run tests (unit by default)
 uv run pytest -q
@@ -174,7 +174,7 @@ Native (stdio):
 ```json
 {
   "mcpServers": {
-    "glyx-mcp": { "command": "glyx-mcp" }
+    "glyx-ai": { "command": "glyx-mcp" }
   }
 }
 ```
@@ -184,7 +184,7 @@ HTTP:
 ```json
 {
   "mcpServers": {
-    "glyx-mcp": {
+    "glyx-ai": {
       "command": "bash",
       "args": ["-lc", "glyx-mcp-http"],
       "transport": {
@@ -243,7 +243,7 @@ curl https://glyx-mcp.fly.dev/api/metrics
 ```json
 {
   "mcpServers": {
-    "glyx-mcp": {
+    "glyx-ai": {
       "transport": {
         "type": "http",
         "url": "https://glyx-mcp.fly.dev/mcp"
@@ -257,7 +257,7 @@ curl https://glyx-mcp.fly.dev/api/metrics
 ```json
 {
   "mcpServers": {
-    "glyx-mcp": {
+    "glyx-ai": {
       "transport": {
         "type": "http",
         "url": "http://localhost:8080/mcp"

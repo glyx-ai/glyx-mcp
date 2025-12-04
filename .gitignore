@@ -34,4 +34,20 @@ htmlcov/
 
 # Type checking
 .mypy_cache/
-.pytype/opencode.jsonc
+.pytype/
+
+# Ruff cache
+.ruff_cache/
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+.sessions.db
+
+# Scratch/test files (shouldn't be committed)
+hello_world.py
+add_function.py
+test_add_function.py
+print_success.py
+hello.md

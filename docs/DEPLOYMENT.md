@@ -199,7 +199,7 @@ docker compose down
 
 #### Production Docker Compose
 
-For production, use the optimized Dockerfile:
+For production, use the production build target:
 
 ```yaml
 # compose.production.yml
@@ -207,7 +207,8 @@ services:
   glyx-mcp:
     build:
       context: .
-      dockerfile: Dockerfile.production
+      dockerfile: Dockerfile
+      target: production
     env_file:
       - .env.production
     ports:

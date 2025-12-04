@@ -2,14 +2,14 @@
 
 ## Architecture
 
-glyx-mcp is built on top of **glyx-python-sdk**, a published package providing:
+glyx-ai is built on top of **glyx-python-sdk**, a published package providing:
 - Core agent framework (`ComposableAgent`, `AgentConfig`)
 - Orchestration engine (`GlyxOrchestrator`)
 - Memory management (Mem0 integration)
 - Pipeline support for multi-stage workflows
 - Type-safe models and event handling
 
-The SDK is installed as a local editable dependency from `packages/glyx-python-sdk/`.
+The SDK is installed as a local editable dependency from `packages/sdk/`.
 
 ## Essential Commands
 
@@ -19,13 +19,13 @@ The SDK is installed as a local editable dependency from `packages/glyx-python-s
 **Single test**: `uv run pytest tests/test_file.py::test_function_name`
 **Integration tests**: `uv run pytest -m integration`
 **E2E tests**: `uv run pytest -m e2e`
-**Type check**: `mypy src/`
-**Lint**: `ruff check src/`
+**Type check**: `mypy src/glyx/`
+**Lint**: `ruff check src/glyx/`
 **Client integration**: `uv run pytest tests/test_client_integration.py -vv -ss`
 
 ## Available Agents
 
-Auto-discovered from JSON in `agents/` and exposed as MCP tools (`use_{agent_key}`):
+Auto-discovered from JSON in `packages/sdk/agents/` and exposed as MCP tools (`use_{agent_key}`):
 
 - `aider`
 - `claude`

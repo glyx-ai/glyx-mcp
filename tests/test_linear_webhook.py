@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from glyx_python_sdk.integrations.linear import AgentSessionEvent, LinearGraphQLClient
-from glyx.mcp.webhooks.base import verify_signature
+from api.webhooks.base import verify_signature
 
 
 def test_agent_session_event_parsing():

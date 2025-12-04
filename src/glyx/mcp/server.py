@@ -131,7 +131,13 @@ mcp = FastMCP("glyx-mcp")
 logger.info("Initializing MCP tools...")
 
 # Auto-discover and register agents from JSON configs
-agents_dir = Path(__file__).parent.parent.parent.parent / "agents"
+# Agents are now in the SDK package
+from pathlib import Path as PathLibPath
+import glyx_python_sdk
+
+# Get agents directory from SDK package location
+_sdk_path = PathLibPath(glyx_python_sdk.__file__).parent.parent
+agents_dir = _sdk_path / "agents"
 discover_and_register_agents(mcp, agents_dir)
 
 # Register non-agent tools manually
@@ -221,7 +227,7 @@ Authorization: Bearer <access_token>
 
 Required environment variables:
 - `OPENAI_API_KEY` - OpenAI API key
-- `ANTHROPIC_API_KEY` - Anthropic API key  
+- `ANTHROPIC_API_KEY` - Anthropic API key
 - `OPENROUTER_API_KEY` - OpenRouter API key
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_ANON_KEY` - Supabase anon key
@@ -436,7 +442,7 @@ async def metrics() -> dict[str, Any]:
         "timestamp": datetime.now().isoformat(),
         "service": "glyx-mcp",
         "uptime_seconds": time() - start_time,
-        "agents_available": len(list((Path(__file__).parent.parent.parent.parent / "agents").glob("*.json"))),
+        "agents_available": len(list(agents_dir.glob("*.json"))),
     }
 
 
@@ -593,7 +599,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await ws_manager.disconnect(websocket)
 
 
-@api_router.get("/agent-sequences", tags=["Agent Sequences"], summary="List Agent Sequences", response_description="List of agent sequences")
+@api_router.get(
+    "/agent-sequences",
+    tags=["Agent Sequences"],
+    summary="List Agent Sequences",
+    response_description="List of agent sequences",
+)
 async def api_list_agent_sequences(status: str | None = None) -> list[AgentSequence]:
     """
     List all agent sequences, optionally filtered by status.
@@ -1214,7 +1225,7 @@ Page content:
 @api_router.get("/agents")
 async def api_list_agents() -> list[AgentResponse]:
     """List all available agents from JSON configs."""
-    agents_path = Path(__file__).parent.parent.parent.parent / "agents"
+    agents_path = agents_dir
     result: list[AgentResponse] = []
 
     for json_file in agents_path.glob("*.json"):
@@ -1309,6 +1320,84 @@ async def api_delete_deployment(
         return {"status": "deleted"}
     except Exception as e:
         logger.error(f"Failed to delete deployment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get(
+    "/github/repositories",
+    tags=["GitHub"],
+    summary="List GitHub Repositories",
+    response_description="List of GitHub repositories from activity history",
+)
+async def api_list_github_repositories() -> list[dict[str, Any]]:
+    """
+    List unique GitHub repositories from activity history.
+
+    Returns repositories that have had webhook events (pushes, PRs, issues, etc.)
+    stored in the activities table. Repositories are identified by org_id in the
+    format "owner/repo".
+
+    **Returns:** Array of repository objects with:
+    - `full_name`: Repository full name (e.g., "owner/repo")
+    - `owner`: Repository owner/organization name
+    - `name`: Repository name
+    - `last_activity`: Most recent activity timestamp (ISO format)
+
+    **Example Response:**
+    ```json
+    [
+        {
+            "full_name": "htelsiz/glyx-mcp",
+            "owner": "htelsiz",
+            "name": "glyx-mcp",
+            "last_activity": "2025-12-04T13:45:00.000Z"
+        }
+    ]
+    ```
+    """
+    try:
+        supabase = get_supabase()
+        # Query activities table for unique org_ids that look like GitHub repos (contain "/")
+        # Note: The table was renamed to "events" in migration but code still uses "activities"
+        response = (
+            supabase.table("activities")
+            .select("org_id, org_name, created_at")
+            .not_.is_("org_id", "null")
+            .order("created_at", desc=True)
+            .execute()
+        )
+
+        # Extract unique repositories (org_id format: "owner/repo")
+        repos: dict[str, dict[str, Any]] = {}
+        for row in response.data:
+            org_id = row.get("org_id", "")
+            if isinstance(org_id, str) and "/" in org_id:
+                if org_id not in repos:
+                    parts = org_id.split("/", 1)
+                    repos[org_id] = {
+                        "full_name": org_id,
+                        "owner": parts[0] if len(parts) > 0 else "",
+                        "name": parts[1] if len(parts) > 1 else org_id,
+                        "last_activity": row.get("created_at"),
+                    }
+                else:
+                    # Update last_activity if this is more recent
+                    current_time = row.get("created_at")
+                    if current_time and (
+                        not repos[org_id]["last_activity"] or current_time > repos[org_id]["last_activity"]
+                    ):
+                        repos[org_id]["last_activity"] = current_time
+
+        # Sort by last activity (most recent first)
+        repo_list = sorted(
+            repos.values(),
+            key=lambda x: x.get("last_activity", ""),
+            reverse=True,
+        )
+
+        return repo_list
+    except Exception as e:
+        logger.error(f"Failed to list GitHub repositories: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

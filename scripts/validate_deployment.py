@@ -14,11 +14,11 @@ except ImportError:
 
 
 class Colors:
-    GREEN = '\033[0;32m'
-    RED = '\033[0;31m'
-    YELLOW = '\033[1;33m'
-    BLUE = '\033[0;34m'
-    NC = '\033[0m'
+    GREEN = "\033[0;32m"
+    RED = "\033[0;31m"
+    YELLOW = "\033[1;33m"
+    BLUE = "\033[0;34m"
+    NC = "\033[0m"
 
 
 def print_success(msg: str) -> None:
@@ -58,19 +58,19 @@ def check_env_vars(env_file: str) -> dict[str, bool]:
         "ANTHROPIC_API_KEY",
         "OPENROUTER_API_KEY",
     ]
-    
+
     recommended_vars = [
         "JWT_SECRET_KEY",
         "SUPABASE_URL",
         "SUPABASE_ANON_KEY",
     ]
-    
+
     results: dict[str, bool] = {}
-    
+
     if not Path(env_file).exists():
         print_error(f"Environment file not found: {env_file}")
         return {"file_exists": False}
-    
+
     # Read env file
     env_vars: dict[str, str] = {}
     with open(env_file) as f:
@@ -79,7 +79,7 @@ def check_env_vars(env_file: str) -> dict[str, bool]:
             if line and not line.startswith("#") and "=" in line:
                 key, value = line.split("=", 1)
                 env_vars[key.strip()] = value.strip()
-    
+
     # Check required vars
     print_info("Checking required environment variables...")
     all_required_set = True
@@ -91,7 +91,7 @@ def check_env_vars(env_file: str) -> dict[str, bool]:
             print_error(f"{var} is not set or empty")
             results[var] = False
             all_required_set = False
-    
+
     # Check recommended vars
     print_info("Checking recommended environment variables...")
     for var in recommended_vars:
@@ -101,7 +101,7 @@ def check_env_vars(env_file: str) -> dict[str, bool]:
         else:
             print_warning(f"{var} is not set (optional but recommended)")
             results[var] = False
-    
+
     # Check JWT secret
     if "JWT_SECRET_KEY" in env_vars:
         if env_vars["JWT_SECRET_KEY"] == "CHANGE_ME_IN_PRODUCTION_USE_RANDOM_STRING":
@@ -113,7 +113,7 @@ def check_env_vars(env_file: str) -> dict[str, bool]:
         else:
             print_success("JWT_SECRET_KEY looks secure")
             results["jwt_secure"] = True
-    
+
     results["all_required_set"] = all_required_set
     return results
 
@@ -121,45 +121,44 @@ def check_env_vars(env_file: str) -> dict[str, bool]:
 def check_docker_files() -> bool:
     """Check Docker-related files."""
     print_info("Checking Docker configuration...")
-    
+
     files_ok = True
     files_ok &= check_file_exists("Dockerfile")
-    files_ok &= check_file_exists("Dockerfile.production")
     files_ok &= check_file_exists("compose.yml")
     files_ok &= check_file_exists("fly.toml")
-    
+
     return files_ok
 
 
 def check_agent_configs() -> bool:
     """Check agent configuration files."""
     print_info("Checking agent configurations...")
-    
+
     agents_dir = Path("agents")
     if not agents_dir.exists():
         print_error("agents/ directory not found")
         return False
-    
+
     agent_files = list(agents_dir.glob("*.json"))
     if not agent_files:
         print_error("No agent configuration files found in agents/")
         return False
-    
+
     print_success(f"Found {len(agent_files)} agent configurations:")
     for agent_file in sorted(agent_files):
         print(f"  - {agent_file.name}")
-    
+
     return True
 
 
 def check_scripts() -> bool:
     """Check deployment scripts."""
     print_info("Checking deployment scripts...")
-    
+
     scripts_ok = True
     scripts_ok &= check_file_exists("deploy.sh")
     scripts_ok &= check_file_exists("install.sh")
-    
+
     # Check if scripts are executable
     for script in ["deploy.sh", "install.sh"]:
         path = Path(script)
@@ -168,7 +167,7 @@ def check_scripts() -> bool:
                 print_success(f"{script} is executable")
             else:
                 print_warning(f"{script} is not executable (run: chmod +x {script})")
-    
+
     return scripts_ok
 
 
@@ -178,20 +177,20 @@ def main() -> None:
     print("  glyx-mcp Deployment Validation")
     print("=" * 60)
     print()
-    
+
     # Change to project root
     project_root = Path(__file__).parent.parent
     os.chdir(project_root)
-    
+
     all_checks_passed = True
-    
+
     # Check files
     print("\n📁 File Structure Checks")
     print("-" * 60)
     all_checks_passed &= check_docker_files()
     all_checks_passed &= check_agent_configs()
     all_checks_passed &= check_scripts()
-    
+
     # Check documentation
     print("\n📚 Documentation Checks")
     print("-" * 60)
@@ -199,11 +198,11 @@ def main() -> None:
     check_file_exists("QUICKSTART.md")
     check_file_exists("docs/DEPLOYMENT.md")
     check_file_exists("AGENTS.md")
-    
+
     # Check environment
     print("\n🔐 Environment Configuration")
     print("-" * 60)
-    
+
     # Check for .env file
     if Path(".env").exists():
         env_results = check_env_vars(".env")
@@ -211,7 +210,7 @@ def main() -> None:
             print_warning("Development .env file incomplete")
     else:
         print_warning(".env file not found (create from .env.example)")
-    
+
     # Check for .env.production
     if Path(".env.production").exists():
         print()
@@ -222,7 +221,7 @@ def main() -> None:
             all_checks_passed = False
     else:
         print_warning(".env.production not found (required for deployment)")
-    
+
     # Summary
     print("\n" + "=" * 60)
     if all_checks_passed:
