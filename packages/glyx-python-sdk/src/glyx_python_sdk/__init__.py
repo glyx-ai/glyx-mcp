@@ -29,19 +29,22 @@ from glyx_python_sdk.models.response import (
 from glyx_python_sdk.models.task import Task
 from glyx_python_sdk.orchestrator import GlyxOrchestrator
 from glyx_python_sdk.pipelines import (
+    AgentSequence,
+    AgentSequenceCreate,
+    AgentSequenceStatus,
+    AgentSequenceUpdate,
     Artifact,
+    ArtifactType,
+    ActorType,
     ConversationEvent,
-    Feature,
-    FeatureCreate,
-    FeatureUpdate,
     Pipeline,
     Role,
     Stage,
     StageStatus,
-    delete_feature,
-    get_feature,
-    list_features,
-    save_feature,
+    delete_agent_sequence,
+    get_agent_sequence,
+    list_agent_sequences,
+    save_agent_sequence,
 )
 from glyx_python_sdk.prompts import build_task_prompt, get_orchestrator_instructions
 from glyx_python_sdk.registry import discover_and_register_agents, make_agent_wrapper
@@ -54,6 +57,16 @@ from glyx_python_sdk.supabase_loader import (
     save_agent_to_supabase,
 )
 from glyx_python_sdk.types import TaskData
+from glyx_python_sdk.workflows import (
+    AgentWorkflowConfig,
+    AgentWorkflowCreate,
+    AgentWorkflowExecuteRequest,
+    AgentWorkflowUpdate,
+    delete_workflow,
+    get_workflow,
+    list_workflows,
+    save_workflow,
+)
 
 __version__ = "0.0.1"
 
@@ -70,18 +83,21 @@ __all__ = [
     "GlyxOrchestrator",
     # Pipeline management
     "Pipeline",
-    "Feature",
-    "FeatureCreate",
-    "FeatureUpdate",
+    "AgentSequence",
+    "AgentSequenceCreate",
+    "AgentSequenceUpdate",
+    "AgentSequenceStatus",
     "Stage",
     "StageStatus",
     "Role",
     "Artifact",
+    "ArtifactType",
+    "ActorType",
     "ConversationEvent",
-    "get_feature",
-    "list_features",
-    "save_feature",
-    "delete_feature",
+    "get_agent_sequence",
+    "list_agent_sequences",
+    "save_agent_sequence",
+    "delete_agent_sequence",
     # Memory functions
     "save_memory",
     "search_memory",
@@ -116,7 +132,15 @@ __all__ = [
     # Prompts
     "build_task_prompt",
     "get_orchestrator_instructions",
+    # Workflows (Composable API Agent)
+    "AgentWorkflowConfig",
+    "AgentWorkflowCreate",
+    "AgentWorkflowUpdate",
+    "AgentWorkflowExecuteRequest",
+    "get_workflow",
+    "list_workflows",
+    "save_workflow",
+    "delete_workflow",
     # Version
     "__version__",
 ]
-

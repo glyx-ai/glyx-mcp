@@ -183,7 +183,6 @@ class GlyxOrchestrator:
         litellm_model = LitellmModel(
             model=model,
             api_key=settings.openrouter_api_key,
-            base_url="https://openrouter.ai/api/v1",
         )
 
         # Create orchestrator agent with all tools
