@@ -16,7 +16,7 @@
         "required": false,
         "description": "Model to use (e.g., o4-mini, o3, gpt-4)",
         "type": "string",
-        "default": "gpt-5"
+        "default": "gpt-5.1-codex"
       },
       "working_dir": {
         "flag": "--cd",

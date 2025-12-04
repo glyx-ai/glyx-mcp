@@ -15,7 +15,7 @@
         "required": false,
         "description": "Model to use",
         "type": "string",
-        "default": "gemini-2.5-pro"
+        "default": "gemini-3-pro"
       },
       "working_dir": {
         "flag": "--add-dir",

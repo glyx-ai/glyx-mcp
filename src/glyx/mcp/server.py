@@ -25,6 +25,7 @@ from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 from openai import AsyncOpenAI
 from supabase import create_client
 
+from dbos import DBOS, SetWorkflowID
 from glyx_python_sdk import (
     ComposableAgent,
     Feature,
@@ -41,7 +42,15 @@ from glyx_python_sdk import (
     save_memory,
     search_memory,
 )
+from glyx_python_sdk.orchestrator import run_durable_orchestration
 from glyx_python_sdk.models.response import BaseResponseEvent, StreamEventType, parse_response_event
+from glyx_python_sdk.models.stream_items import (
+    MessageItem,
+    ToolCallItem,
+    ToolOutputItem,
+    ReasoningItem,
+    parse_stream_item,
+)
 from glyx_python_sdk.types import (
     AgentResponse,
     AuthResponse,
@@ -70,6 +79,7 @@ from glyx.mcp.tools.session_tools import (
     get_session_messages,
     list_sessions,
 )
+from glyx.mcp.tools.install_agents import install_agents
 from glyx.mcp.webhooks.github import create_github_webhook_router
 from glyx.mcp.webhooks.linear import create_linear_webhook_router
 
@@ -86,6 +96,18 @@ logger = logging.getLogger(__name__)
 
 # Track server start time for uptime metrics
 start_time = time()
+
+# Initialize DBOS for durable workflows (requires Supabase Postgres)
+dbos_db_url = os.environ.get("DBOS_SYSTEM_DATABASE_URL")
+if not dbos_db_url:
+    raise RuntimeError("DBOS_SYSTEM_DATABASE_URL is required")
+dbos_config = {
+    "name": "glyx-orchestrator",
+    "system_database_url": dbos_db_url,
+}
+DBOS(config=dbos_config)
+DBOS.launch()
+logger.info("DBOS initialized with Supabase Postgres")
 
 
 # Optional Langfuse instrumentation (only if keys are configured)
@@ -129,6 +151,7 @@ mcp.tool(search_memory)
 mcp.tool(save_memory)
 mcp.tool(list_sessions)
 mcp.tool(get_session_messages)
+mcp.tool(install_agents)
 
 # Agent CRUD tools (Supabase-backed)
 mcp.tool(create_agent)
@@ -191,11 +214,7 @@ api_router = APIRouter(prefix="/api")
 @api_router.get("/healthz")
 async def healthz() -> dict[str, Any]:
     """Basic health check endpoint."""
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "service": "glyx-mcp"
-    }
+    return {"status": "ok", "timestamp": datetime.now().isoformat(), "service": "glyx-mcp"}
 
 
 @api_router.get("/health/detailed")
@@ -205,9 +224,9 @@ async def health_detailed() -> dict[str, Any]:
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "service": "glyx-mcp",
-        "checks": {}
+        "checks": {},
     }
-    
+
     # Check Supabase connection
     if settings.supabase_url and settings.supabase_anon_key:
         try:
@@ -219,7 +238,7 @@ async def health_detailed() -> dict[str, Any]:
             checks["status"] = "degraded"
     else:
         checks["checks"]["supabase"] = {"status": "not_configured"}
-    
+
     # Check Langfuse connection
     if langfuse:
         try:
@@ -230,22 +249,16 @@ async def health_detailed() -> dict[str, Any]:
             checks["status"] = "degraded"
     else:
         checks["checks"]["langfuse"] = {"status": "not_configured"}
-    
+
     # Check OpenAI API key
-    checks["checks"]["openai"] = {
-        "status": "configured" if settings.openai_api_key else "not_configured"
-    }
-    
+    checks["checks"]["openai"] = {"status": "configured" if settings.openai_api_key else "not_configured"}
+
     # Check Anthropic API key
-    checks["checks"]["anthropic"] = {
-        "status": "configured" if settings.anthropic_api_key else "not_configured"
-    }
-    
+    checks["checks"]["anthropic"] = {"status": "configured" if settings.anthropic_api_key else "not_configured"}
+
     # Check OpenRouter API key
-    checks["checks"]["openrouter"] = {
-        "status": "configured" if settings.openrouter_api_key else "not_configured"
-    }
-    
+    checks["checks"]["openrouter"] = {"status": "configured" if settings.openrouter_api_key else "not_configured"}
+
     return checks
 
 
@@ -298,8 +311,6 @@ def _normalize_stream_payload(event: Any) -> Any:
 @api_app.post("/stream/cursor")
 async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
     """Stream orchestrator output using GlyxOrchestrator with LiteLLM."""
-    from agents.items import ItemHelpers, MessageOutputItem, ToolCallItem, ToolCallOutputItem, ReasoningItem
-
     from glyx_python_sdk.agent import create_event
     from glyx_python_sdk import build_task_prompt
 
@@ -313,49 +324,71 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
             metadata=metadata,
         )
 
+    def sse(data: dict) -> str:
+        return f"data: {json.dumps(data)}\n\n"
+
     async def generate():
         try:
             prompt = build_task_prompt(body.task)
-            logger.info(f"[STREAM] Executing task {body.task.id}: {body.task.title}")
+            task_id = body.task.id
+            logger.info(f"[STREAM] Executing durable task {task_id}: {body.task.title}")
 
-            yield f"data: {json.dumps({'type': 'progress', 'message': '🚀 Starting orchestrator...', 'timestamp': datetime.now().isoformat()})}\n\n"
-
-            orchestrator = GlyxOrchestrator(
-                agent_name="TaskOrchestrator",
-                model="openrouter/anthropic/claude-sonnet-4",
-                mcp_servers=[],
-                session_id=f"task-{body.task.id}",
+            yield sse(
+                {
+                    "type": "progress",
+                    "message": "🚀 Starting durable orchestrator...",
+                    "timestamp": datetime.now().isoformat(),
+                }
             )
 
-            async for item in orchestrator.run_prompt_streamed_items(prompt):
+            # Start the durable workflow - it checkpoints each step
+            workflow_id = f"task-{task_id}"
+            with SetWorkflowID(workflow_id):
+                handle = DBOS.start_workflow(
+                    run_durable_orchestration,
+                    prompt,
+                    workflow_id,
+                    "openrouter/anthropic/claude-sonnet-4",
+                    10,
+                )
+
+            # Stream items from the workflow as they are produced
+            for raw_item in DBOS.read_stream(handle.workflow_id, "items"):
                 timestamp = datetime.now().isoformat()
+                item = parse_stream_item(raw_item)
+                payload = {"timestamp": timestamp, **item.model_dump()}
 
                 match item:
-                    case ToolCallItem() as item:
-                        await publish("tool_call", f"Tool: {item.raw_item.name}", {"tool_name": item.raw_item.name})
-                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': item.raw_item.name, 'timestamp': timestamp})}\n\n"
+                    case ToolCallItem(name=name, arguments=args):
+                        await publish("tool_call", name, {"arguments": args})
+                    case MessageItem(content=content):
+                        await publish("message", content)
+                    case ReasoningItem(content=content):
+                        await publish("thinking", content)
+                    case ToolOutputItem():
+                        pass
 
-                    case ToolCallOutputItem() as item:
-                        yield f"data: {json.dumps({'type': 'tool_output', 'output': str(item.output)[:500], 'timestamp': timestamp})}\n\n"
-
-                    case MessageOutputItem() as item:
-                        text = ItemHelpers.text_message_output(item)
-                        await publish("message", text)
-                        yield f"data: {json.dumps({'type': 'message', 'content': text, 'timestamp': timestamp})}\n\n"
-
-                    case ReasoningItem() as item:
-                        await publish("thinking", str(item.raw_item)[:500])
-                        yield f"data: {json.dumps({'type': 'thinking', 'content': str(item.raw_item), 'timestamp': timestamp})}\n\n"
+                yield sse(payload)
 
             await publish("complete", "Task completed")
-            yield f"data: {json.dumps({'type': 'complete', 'output': 'Task completed', 'timestamp': datetime.now().isoformat()})}\n\n"
-
-            await orchestrator.cleanup()
+            yield sse(
+                {
+                    "type": "complete",
+                    "output": "Task completed",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
         except Exception as e:
             logger.exception("Stream cursor error")
             await publish("error", str(e))
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'timestamp': datetime.now().isoformat()})}\n\n"
+            yield sse(
+                {
+                    "type": "error",
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -475,7 +508,8 @@ async def api_delete_organization(org_id: str) -> dict[str, str]:
 
 
 # Tasks API
-SMART_TASK_SYSTEM_PROMPT = """You are a task creation assistant. Given selected text from a webpage, create a clear and actionable task.
+SMART_TASK_SYSTEM_PROMPT = """You are a task creation assistant. \
+Given selected text from a webpage, create a clear and actionable task.
 
 Return a JSON object with:
 - title: A concise task title (max 80 chars)
@@ -537,7 +571,14 @@ async def api_get_task(task_id: str) -> TaskResponse:
 async def api_get_linear_task(session_id: str) -> TaskResponse | None:
     """Get a task by Linear session ID."""
     client = get_supabase()
-    response = client.table("tasks").select("*").eq("linear_session_id", session_id).order("created_at", desc=True).limit(1).execute()
+    response = (
+        client.table("tasks")
+        .select("*")
+        .eq("linear_session_id", session_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
     if not response.data:
         return None
     row = response.data[0]
@@ -548,7 +589,13 @@ async def api_get_linear_task(session_id: str) -> TaskResponse | None:
 async def api_list_linear_tasks(workspace_id: str) -> list[TaskResponse]:
     """List all tasks for a Linear workspace."""
     client = get_supabase()
-    response = client.table("tasks").select("*").eq("linear_workspace_id", workspace_id).order("created_at", desc=True).execute()
+    response = (
+        client.table("tasks")
+        .select("*")
+        .eq("linear_workspace_id", workspace_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
     return [TaskResponse(**{**row, "id": str(row["id"])}) for row in response.data]
 
 
@@ -739,7 +786,8 @@ async def api_infer_memory(body: MemoryInferRequest) -> MemoryInferResponse:
         if existing_memories:
             existing_context = "\n".join(f"- {m.get('memory', '')}" for m in existing_memories[:5])
 
-    system_prompt = """You are a knowledge extraction assistant. Analyze the provided page content and suggest 2-4 specific, actionable memories worth saving.
+    system_prompt = """You are a knowledge extraction assistant. \
+Analyze the provided page content and suggest 2-4 specific, actionable memories worth saving.
 
 Focus on:
 - Technical patterns, APIs, or code examples
@@ -749,7 +797,8 @@ Focus on:
 
 For each suggestion:
 1. Extract the core information (be concise, 1-2 sentences)
-2. Assign a category: architecture, integrations, code_style_guidelines, project_id, observability, product, key_concept, or tasks
+2. Assign a category: architecture, integrations, code_style_guidelines, project_id, \
+observability, product, key_concept, or tasks
 3. Explain why this is worth remembering
 
 Respond in JSON format:

@@ -1,20 +1,25 @@
 """Core orchestrator logic."""
+
 from __future__ import annotations
 
 import logging
 
 from agents import Agent, Runner, SQLiteSession, function_tool
 from agents.extensions.models.litellm_model import LitellmModel
-from agents.items import MessageOutputItem, ReasoningItem, ToolCallItem, ToolCallOutputItem
+from dbos import DBOS
+
 from glyx_python_sdk.agent import AgentKey, AgentResult, ComposableAgent
-from glyx_python_sdk.settings import settings
-from glyx_python_sdk.memory import search_memory as search_memory_fn
 from glyx_python_sdk.memory import save_memory as save_memory_fn
+from glyx_python_sdk.memory import search_memory as search_memory_fn
+from glyx_python_sdk.models.stream_items import stream_item_from_agent
+from glyx_python_sdk.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Define tools for each ComposableAgent
+
+# Define tools for each ComposableAgent - wrapped with @DBOS.step() for checkpointing
 @function_tool
+@DBOS.step()
 async def use_aider_agent(prompt: str, files: str, model: str = "gpt-5") -> str:
     """Execute Aider for AI-powered code editing and refactoring.
 
@@ -28,16 +33,13 @@ async def use_aider_agent(prompt: str, files: str, model: str = "gpt-5") -> str:
     """
     logger.info(f"Executing Aider agent: prompt={prompt[:100]}, files={files}")
     agent = ComposableAgent.from_key(AgentKey.AIDER)
-    result: AgentResult = await agent.execute(
-        {"prompt": prompt, "files": files, "model": model}, timeout=300
-    )
+    result: AgentResult = await agent.execute({"prompt": prompt, "files": files, "model": model}, timeout=300)
     return result.output
 
 
 @function_tool
-async def use_grok_agent(
-    prompt: str, model: str = "openrouter/x-ai/grok-code-fast-1"
-) -> str:
+@DBOS.step()
+async def use_grok_agent(prompt: str, model: str = "openrouter/x-ai/grok-code-fast-1") -> str:
     """Execute Grok for general reasoning and analysis.
 
     Args:
@@ -52,15 +54,14 @@ async def use_grok_agent(
     logger.info(f"Executing Grok agent: prompt={prompt[:100]}")
     start = time.time()
     agent = ComposableAgent.from_key(AgentKey.GROK)
-    result: AgentResult = await agent.execute(
-        {"prompt": prompt, "model": model}, timeout=300
-    )
+    result: AgentResult = await agent.execute({"prompt": prompt, "model": model}, timeout=300)
     duration = time.time() - start
     logger.info(f"Grok execution took {duration:.2f}s")
     return result.output
 
 
 @function_tool
+@DBOS.step()
 async def use_claude_agent(prompt: str, model: str = "claude-sonnet-4") -> str:
     """Execute Claude for advanced reasoning and complex workflows.
 
@@ -73,13 +74,12 @@ async def use_claude_agent(prompt: str, model: str = "claude-sonnet-4") -> str:
     """
     logger.info(f"Executing Claude agent: prompt={prompt[:100]}")
     agent = ComposableAgent.from_key(AgentKey.CLAUDE)
-    result: AgentResult = await agent.execute(
-        {"prompt": prompt, "model": model}, timeout=300
-    )
+    result: AgentResult = await agent.execute({"prompt": prompt, "model": model}, timeout=300)
     return result.output
 
 
 @function_tool
+@DBOS.step()
 async def use_codex_agent(prompt: str, model: str = "gpt-5") -> str:
     """Execute Codex for code generation.
 
@@ -92,13 +92,12 @@ async def use_codex_agent(prompt: str, model: str = "gpt-5") -> str:
     """
     logger.info(f"Executing Codex agent: prompt={prompt[:100]}")
     agent = ComposableAgent.from_key(AgentKey.CODEX)
-    result: AgentResult = await agent.execute(
-        {"prompt": prompt, "model": model}, timeout=300
-    )
+    result: AgentResult = await agent.execute({"prompt": prompt, "model": model}, timeout=300)
     return result.output
 
 
 @function_tool
+@DBOS.step()
 async def use_opencode_agent(prompt: str, model: str = "gpt-5") -> str:
     """Execute OpenCode for general-purpose coding tasks.
 
@@ -111,13 +110,12 @@ async def use_opencode_agent(prompt: str, model: str = "gpt-5") -> str:
     """
     logger.info(f"Executing OpenCode agent: prompt={prompt[:100]}")
     agent = ComposableAgent.from_key(AgentKey.OPENCODE)
-    result: AgentResult = await agent.execute(
-        {"prompt": prompt, "model": model}, timeout=300
-    )
+    result: AgentResult = await agent.execute({"prompt": prompt, "model": model}, timeout=300)
     return result.output
 
 
 @function_tool
+@DBOS.step()
 def search_memory(query: str, user_id: str = "glyx_app_1", limit: int = 5) -> str:
     """Search project memory for context.
 
@@ -133,6 +131,7 @@ def search_memory(query: str, user_id: str = "glyx_app_1", limit: int = 5) -> st
 
 
 @function_tool
+@DBOS.step()
 def save_memory(
     content: str,
     agent_id: str,
@@ -184,14 +183,14 @@ class GlyxOrchestrator:
         litellm_model = LitellmModel(
             model=model,
             api_key=settings.openrouter_api_key,
-            api_base="https://openrouter.ai/api/v1",
+            base_url="https://openrouter.ai/api/v1",
         )
 
         # Create orchestrator agent with all tools
         self.agent = Agent(
             name=agent_name,
             model=litellm_model,
-            system_prompt="You are an AI orchestrator coordinating specialized agents.",
+            instructions="You are an AI orchestrator coordinating specialized agents.",
             tools=[
                 use_aider_agent,
                 use_grok_agent,
@@ -203,16 +202,43 @@ class GlyxOrchestrator:
             ],
         )
 
-        self.runner = Runner(
-            session=self.session,
-        )
-
-    async def run_prompt_streamed_items(self, prompt: str):
+    async def run_prompt_streamed_items(self, prompt: str, max_turns: int = 10):
         """Run prompt and stream items."""
-        async for item in self.runner.run_streamed_items(self.agent, prompt):
-            yield item
+        result = Runner.run_streamed(
+            starting_agent=self.agent,
+            input=prompt,
+            session=self.session,
+            max_turns=max_turns,
+        )
+        async for event in result.stream_events():
+            if event.type == "run_item_stream_event":
+                yield event.item
 
     async def cleanup(self):
         """Cleanup resources."""
         pass
 
+
+@DBOS.workflow()
+async def run_durable_orchestration(
+    prompt: str,
+    session_id: str,
+    model: str = "openrouter/anthropic/claude-sonnet-4",
+    max_turns: int = 10,
+) -> None:
+    """Durable orchestration workflow with streaming - survives crashes and can be resumed.
+
+    Each agent tool call is checkpointed. On restart, completed steps are skipped.
+    Items are streamed via DBOS.write_stream() as they are produced.
+
+    Args:
+        prompt: The task prompt
+        session_id: Unique session/task ID (used for idempotency)
+        model: Model to use for orchestration
+        max_turns: Maximum conversation turns
+    """
+    orch = GlyxOrchestrator(session_id=session_id, model=model)
+    async for item in orch.run_prompt_streamed_items(prompt, max_turns=max_turns):
+        stream_item = stream_item_from_agent(item)
+        DBOS.write_stream("items", stream_item.model_dump())
+    DBOS.close_stream("items")
