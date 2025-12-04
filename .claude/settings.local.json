@@ -102,6 +102,9 @@
       "Bash(pnpm build:*)",
       "Bash(pnpm add:*)",
       "Bash(pnpm dev --help:*)",
+      "Bash(pnpm build:extension:*)",
+      "Bash(openssl rand:*)",
+      "Bash(uv pip install:*)"
       "Bash(pnpm build:extension:*)"
     ],
     "additionalDirectories": [

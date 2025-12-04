@@ -170,7 +170,7 @@ api_app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 
-@api_app.get("/healthz")
+@api_router.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
