@@ -15,9 +15,10 @@ from typing import Any
 import uvicorn
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastmcp import Context, FastMCP
 from fastmcp.utilities.logging import get_logger
 from langfuse import Langfuse
@@ -25,32 +26,33 @@ from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 from openai import AsyncOpenAI
 from supabase import create_client
 
-from dbos import DBOS, SetWorkflowID
 from glyx_python_sdk import (
     ComposableAgent,
-    Feature,
-    FeatureCreate,
-    FeatureUpdate,
+    AgentSequence,
+    AgentSequenceCreate,
+    AgentSequenceUpdate,
     Pipeline,
-    delete_feature,
-    get_feature,
-    list_features,
-    save_feature,
+    delete_agent_sequence,
+    get_agent_sequence,
+    list_agent_sequences,
+    save_agent_sequence,
     discover_and_register_agents,
     GlyxOrchestrator,
     settings,
     save_memory,
     search_memory,
 )
-from glyx_python_sdk.orchestrator import run_durable_orchestration
-from glyx_python_sdk.models.response import BaseResponseEvent, StreamEventType, parse_response_event
-from glyx_python_sdk.models.stream_items import (
-    MessageItem,
-    ToolCallItem,
-    ToolOutputItem,
-    ReasoningItem,
-    parse_stream_item,
+from glyx_python_sdk.workflows import (
+    AgentWorkflowConfig,
+    AgentWorkflowCreate,
+    AgentWorkflowUpdate,
+    AgentWorkflowExecuteRequest,
+    delete_workflow,
+    get_workflow,
+    list_workflows,
+    save_workflow,
 )
+from glyx_python_sdk.models.response import BaseResponseEvent, StreamEventType, parse_response_event
 from glyx_python_sdk.types import (
     AgentResponse,
     AuthResponse,
@@ -79,7 +81,7 @@ from glyx.mcp.tools.session_tools import (
     get_session_messages,
     list_sessions,
 )
-from glyx.mcp.tools.install_agents import install_agents
+from glyx.mcp.integrations.github_api import get_github_client, GitHubRepository
 from glyx.mcp.webhooks.github import create_github_webhook_router
 from glyx.mcp.webhooks.linear import create_linear_webhook_router
 
@@ -96,18 +98,6 @@ logger = logging.getLogger(__name__)
 
 # Track server start time for uptime metrics
 start_time = time()
-
-# Initialize DBOS for durable workflows (requires Supabase Postgres)
-dbos_db_url = os.environ.get("DBOS_SYSTEM_DATABASE_URL")
-if not dbos_db_url:
-    raise RuntimeError("DBOS_SYSTEM_DATABASE_URL is required")
-dbos_config = {
-    "name": "glyx-orchestrator",
-    "system_database_url": dbos_db_url,
-}
-DBOS(config=dbos_config)
-DBOS.launch()
-logger.info("DBOS initialized with Supabase Postgres")
 
 
 # Optional Langfuse instrumentation (only if keys are configured)
@@ -151,7 +141,6 @@ mcp.tool(search_memory)
 mcp.tool(save_memory)
 mcp.tool(list_sessions)
 mcp.tool(get_session_messages)
-mcp.tool(install_agents)
 
 # Agent CRUD tools (Supabase-backed)
 mcp.tool(create_agent)
@@ -204,22 +193,183 @@ def main() -> None:
 
 
 # Create FastAPI app for additional routes (WebSocket, streaming, health)
-api_app = FastAPI()
+api_app = FastAPI(
+    title="Glyx MCP API",
+    description="""
+# Glyx MCP API
+
+Composable AI agent framework with FastMCP server integration.
+
+## Features
+
+- **Multi-Agent Orchestration**: Coordinate multiple AI agents for complex tasks
+- **Real-time Streaming**: WebSocket and SSE support for live updates
+- **Memory Management**: Store and retrieve project context with semantic search
+- **Feature Pipelines**: Multi-stage workflows for feature development
+- **Task Management**: AI-powered task creation and tracking
+- **Organization Management**: Multi-tenant support with Supabase
+- **Health Monitoring**: Comprehensive health checks and metrics
+
+## Authentication
+
+Most endpoints require authentication via Supabase Auth. Include the access token in the Authorization header:
+
+```
+Authorization: Bearer <access_token>
+```
+
+## Environment Setup
+
+Required environment variables:
+- `OPENAI_API_KEY` - OpenAI API key
+- `ANTHROPIC_API_KEY` - Anthropic API key  
+- `OPENROUTER_API_KEY` - OpenRouter API key
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_ANON_KEY` - Supabase anon key
+- `MEM0_API_KEY` - Mem0 API key for memory management
+
+## Resources
+
+- [GitHub Repository](https://github.com/htelsiz/glyx-mcp)
+- [SDK Documentation](https://github.com/htelsiz/glyx-mcp/blob/main/docs/SDK.md)
+- [Deployment Guide](https://github.com/htelsiz/glyx-mcp/blob/main/docs/DEPLOYMENT.md)
+    """,
+    version="0.1.0",
+    contact={
+        "name": "Glyx Team",
+        "url": "https://github.com/htelsiz/glyx-mcp",
+        "email": "hakantelsiz@utexas.edu",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    openapi_tags=[
+        {
+            "name": "Health",
+            "description": "Health check and monitoring endpoints",
+        },
+        {
+            "name": "Streaming",
+            "description": "Real-time streaming endpoints for agent execution",
+        },
+        {
+            "name": "Features",
+            "description": "Feature pipeline management for multi-stage development workflows",
+        },
+        {
+            "name": "Organizations",
+            "description": "Organization management with Supabase backend",
+        },
+        {
+            "name": "Tasks",
+            "description": "Task creation and management, including AI-powered smart tasks",
+        },
+        {
+            "name": "Authentication",
+            "description": "User authentication via Supabase Auth",
+        },
+        {
+            "name": "Memory",
+            "description": "Project memory management with semantic search (Mem0)",
+        },
+        {
+            "name": "Agents",
+            "description": "Agent execution and management",
+        },
+        {
+            "name": "GitHub",
+            "description": "GitHub integration and repository management",
+        },
+        {
+            "name": "Linear",
+            "description": "Linear integration for issue tracking",
+        },
+    ],
+)
+
+# Mount static files
+static_path = Path(__file__).parent.parent / "static"
+if static_path.exists():
+    api_app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 
 # API router with /api prefix
 api_router = APIRouter(prefix="/api")
 
 
-@api_router.get("/healthz")
+@api_app.get("/")
+async def root():
+    """Serve the repository deployment interface."""
+    static_path = Path(__file__).parent.parent / "static" / "index.html"
+    if static_path.exists():
+        return FileResponse(str(static_path))
+    else:
+        raise HTTPException(status_code=404, detail="UI not found")
+
+
+@api_router.get("/healthz", tags=["Health"], summary="Basic Health Check", response_description="Service health status")
 async def healthz() -> dict[str, Any]:
-    """Basic health check endpoint."""
+    """
+    Basic health check endpoint for load balancers and monitoring.
+
+    Returns a simple status indicating the service is running.
+
+    **Returns:**
+    - `status`: "ok" if service is healthy
+    - `timestamp`: Current server timestamp (ISO 8601)
+    - `service`: Service name
+
+    **Example Response:**
+    ```json
+    {
+        "status": "ok",
+        "timestamp": "2025-12-04T13:45:00.000Z",
+        "service": "glyx-mcp"
+    }
+    ```
+    """
     return {"status": "ok", "timestamp": datetime.now().isoformat(), "service": "glyx-mcp"}
 
 
-@api_router.get("/health/detailed")
+@api_router.get(
+    "/health/detailed",
+    tags=["Health"],
+    summary="Detailed Health Check",
+    response_description="Comprehensive service health status with component checks",
+)
 async def health_detailed() -> dict[str, Any]:
-    """Detailed health check with service status."""
+    """
+    Detailed health check including status of all integrated services.
+
+    Checks connectivity and configuration for:
+    - Supabase (database)
+    - Langfuse (tracing)
+    - OpenAI (API integration)
+    - Anthropic (API integration)
+    - OpenRouter (API integration)
+
+    **Status Values:**
+    - `healthy`: All systems operational
+    - `degraded`: Some services unavailable but core functionality works
+    - `unhealthy`: Critical services down
+
+    **Example Response:**
+    ```json
+    {
+        "status": "healthy",
+        "timestamp": "2025-12-04T13:45:00.000Z",
+        "service": "glyx-mcp",
+        "checks": {
+            "supabase": {"status": "ok", "message": "Connected"},
+            "langfuse": {"status": "ok", "message": "Connected"},
+            "openai": {"status": "configured"},
+            "anthropic": {"status": "configured"},
+            "openrouter": {"status": "configured"}
+        }
+    }
+    ```
+    """
     checks: dict[str, Any] = {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
@@ -262,9 +412,27 @@ async def health_detailed() -> dict[str, Any]:
     return checks
 
 
-@api_router.get("/metrics")
+@api_router.get(
+    "/metrics", tags=["Health"], summary="Service Metrics", response_description="Prometheus-compatible metrics"
+)
 async def metrics() -> dict[str, Any]:
-    """Prometheus-compatible metrics endpoint."""
+    """
+    Prometheus-compatible metrics for monitoring and alerting.
+
+    **Metrics:**
+    - `uptime_seconds`: Time since server start
+    - `agents_available`: Number of configured agents
+
+    **Example Response:**
+    ```json
+    {
+        "timestamp": "2025-12-04T13:45:00.000Z",
+        "service": "glyx-mcp",
+        "uptime_seconds": 3600.5,
+        "agents_available": 8
+    }
+    ```
+    """
     return {
         "timestamp": datetime.now().isoformat(),
         "service": "glyx-mcp",
@@ -308,9 +476,52 @@ def _normalize_stream_payload(event: Any) -> Any:
             return event
 
 
-@api_app.post("/stream/cursor")
+@api_app.post(
+    "/stream/cursor",
+    tags=["Streaming"],
+    summary="Stream Orchestrator Execution",
+    response_description="Server-Sent Events (SSE) stream of execution progress",
+)
 async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
-    """Stream orchestrator output using GlyxOrchestrator with LiteLLM."""
+    """
+    Stream real-time orchestrator execution using Server-Sent Events (SSE).
+
+    The orchestrator coordinates multiple AI agents to complete complex tasks.
+    This endpoint streams progress updates as the task executes.
+
+    **Event Types:**
+    - `progress`: Status updates (e.g., "Starting orchestrator...")
+    - `tool_call`: When an agent tool is invoked
+    - `tool_output`: Tool execution results
+    - `message`: LLM responses
+    - `thinking`: Internal reasoning steps
+    - `complete`: Task completion
+    - `error`: Error occurred
+
+    **Request Body:**
+    - `task`: Task object with id, title, description
+    - `organization_id`: Organization UUID
+    - `organization_name`: Organization name (optional)
+
+    **Example Event:**
+    ```
+    data: {"type": "message", "content": "Implementing authentication...", "timestamp": "2025-12-04T13:45:00.000Z"}
+    ```
+
+    **Usage:**
+    ```javascript
+    const eventSource = new EventSource('/stream/cursor', {
+        method: 'POST',
+        body: JSON.stringify({task: {...}, organization_id: '...'})
+    });
+    eventSource.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        console.log(data.type, data.content);
+    };
+    ```
+    """
+    from agents.items import ItemHelpers, MessageOutputItem, ToolCallItem, ToolCallOutputItem, ReasoningItem
+
     from glyx_python_sdk.agent import create_event
     from glyx_python_sdk import build_task_prompt
 
@@ -324,71 +535,49 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
             metadata=metadata,
         )
 
-    def sse(data: dict) -> str:
-        return f"data: {json.dumps(data)}\n\n"
-
     async def generate():
         try:
             prompt = build_task_prompt(body.task)
-            task_id = body.task.id
-            logger.info(f"[STREAM] Executing durable task {task_id}: {body.task.title}")
+            logger.info(f"[STREAM] Executing task {body.task.id}: {body.task.title}")
 
-            yield sse(
-                {
-                    "type": "progress",
-                    "message": "🚀 Starting durable orchestrator...",
-                    "timestamp": datetime.now().isoformat(),
-                }
+            yield f"data: {json.dumps({'type': 'progress', 'message': '🚀 Starting orchestrator...', 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            orchestrator = GlyxOrchestrator(
+                agent_name="TaskOrchestrator",
+                model="openrouter/anthropic/claude-sonnet-4",
+                mcp_servers=[],
+                session_id=f"task-{body.task.id}",
             )
 
-            # Start the durable workflow - it checkpoints each step
-            workflow_id = f"task-{task_id}"
-            with SetWorkflowID(workflow_id):
-                handle = DBOS.start_workflow(
-                    run_durable_orchestration,
-                    prompt,
-                    workflow_id,
-                    "openrouter/anthropic/claude-sonnet-4",
-                    10,
-                )
-
-            # Stream items from the workflow as they are produced
-            for raw_item in DBOS.read_stream(handle.workflow_id, "items"):
+            async for item in orchestrator.run_prompt_streamed_items(prompt):
                 timestamp = datetime.now().isoformat()
-                item = parse_stream_item(raw_item)
-                payload = {"timestamp": timestamp, **item.model_dump()}
 
                 match item:
-                    case ToolCallItem(name=name, arguments=args):
-                        await publish("tool_call", name, {"arguments": args})
-                    case MessageItem(content=content):
-                        await publish("message", content)
-                    case ReasoningItem(content=content):
-                        await publish("thinking", content)
-                    case ToolOutputItem():
-                        pass
+                    case ToolCallItem() as item:
+                        await publish("tool_call", f"Tool: {item.raw_item.name}", {"tool_name": item.raw_item.name})
+                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': item.raw_item.name, 'timestamp': timestamp})}\n\n"
 
-                yield sse(payload)
+                    case ToolCallOutputItem() as item:
+                        yield f"data: {json.dumps({'type': 'tool_output', 'output': str(item.output)[:500], 'timestamp': timestamp})}\n\n"
+
+                    case MessageOutputItem() as item:
+                        text = ItemHelpers.text_message_output(item)
+                        await publish("message", text)
+                        yield f"data: {json.dumps({'type': 'message', 'content': text, 'timestamp': timestamp})}\n\n"
+
+                    case ReasoningItem() as item:
+                        await publish("thinking", str(item.raw_item)[:500])
+                        yield f"data: {json.dumps({'type': 'thinking', 'content': str(item.raw_item), 'timestamp': timestamp})}\n\n"
 
             await publish("complete", "Task completed")
-            yield sse(
-                {
-                    "type": "complete",
-                    "output": "Task completed",
-                    "timestamp": datetime.now().isoformat(),
-                }
-            )
+            yield f"data: {json.dumps({'type': 'complete', 'output': 'Task completed', 'timestamp': datetime.now().isoformat()})}\n\n"
+
+            await orchestrator.cleanup()
 
         except Exception as e:
             logger.exception("Stream cursor error")
             await publish("error", str(e))
-            yield sse(
-                {
-                    "type": "error",
-                    "error": str(e),
-                    "timestamp": datetime.now().isoformat(),
-                }
-            )
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'timestamp': datetime.now().isoformat()})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -405,44 +594,195 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await ws_manager.disconnect(websocket)
 
 
-@api_router.get("/features")
-async def api_list_features(status: str | None = None) -> list[Feature]:
-    """List all features."""
-    return list_features(status)
+@api_router.get("/agent-sequences", tags=["Agent Sequences"], summary="List Agent Sequences", response_description="List of agent sequences")
+async def api_list_agent_sequences(status: str | None = None) -> list[AgentSequence]:
+    """
+    List all agent sequences, optionally filtered by status.
+
+    **Query Parameters:**
+    - `status` (optional): Filter by status ("in_progress", "review", "testing", "done")
+
+    **Returns:** Array of AgentSequence objects with stages, artifacts, and conversation history
+    """
+    return list_agent_sequences(status)
 
 
-@api_router.post("/features")
-async def api_create_feature(body: FeatureCreate) -> Feature:
-    """Create a new feature with default pipeline stages."""
+@api_router.post(
+    "/agent-sequences",
+    tags=["Agent Sequences"],
+    summary="Create Agent Sequence",
+    response_description="Created agent sequence with default pipeline",
+    status_code=201,
+)
+async def api_create_agent_sequence(body: AgentSequenceCreate) -> AgentSequence:
+    """
+    Create a new agent sequence with default 3-stage pipeline.
+
+    Creates an agent sequence with:
+    1. **Implementation** stage (CODER role with CURSOR agent)
+    2. **Code Review** stage (REVIEWER role with CLAUDE agent)
+    3. **Testing** stage (QA role with CLAUDE agent)
+
+    **Request Body:**
+    - `name`: Sequence name
+    - `description`: Sequence description
+
+    **Example:**
+    ```json
+    {
+        "name": "User Authentication",
+        "description": "JWT-based authentication with refresh tokens"
+    }
+    ```
+    """
     pipeline = Pipeline.create(body)
-    return save_feature(pipeline.feature)
+    return save_agent_sequence(pipeline.agent_sequence)
 
 
-@api_router.get("/features/{feature_id}")
-async def api_get_feature(feature_id: str) -> Feature:
-    """Get a feature by ID."""
-    feature = get_feature(feature_id)
-    if not feature:
-        raise HTTPException(status_code=404, detail="Feature not found")
-    return feature
+@api_router.get("/agent-sequences/{sequence_id}")
+async def api_get_agent_sequence(sequence_id: str) -> AgentSequence:
+    """Get an agent sequence by ID."""
+    agent_sequence = get_agent_sequence(sequence_id)
+    if not agent_sequence:
+        raise HTTPException(status_code=404, detail="Agent sequence not found")
+    return agent_sequence
 
 
-@api_router.patch("/features/{feature_id}")
-async def api_update_feature(feature_id: str, body: FeatureUpdate) -> Feature:
-    """Update a feature."""
-    feature = get_feature(feature_id)
-    if not feature:
-        raise HTTPException(status_code=404, detail="Feature not found")
-    updated = feature.model_copy(update=body.model_dump(exclude_unset=True))
-    return save_feature(updated)
+@api_router.patch("/agent-sequences/{sequence_id}")
+async def api_update_agent_sequence(sequence_id: str, body: AgentSequenceUpdate) -> AgentSequence:
+    """Update an agent sequence."""
+    agent_sequence = get_agent_sequence(sequence_id)
+    if not agent_sequence:
+        raise HTTPException(status_code=404, detail="Agent sequence not found")
+    updated = agent_sequence.model_copy(update=body.model_dump(exclude_unset=True))
+    return save_agent_sequence(updated)
 
 
-@api_router.delete("/features/{feature_id}")
-async def api_delete_feature(feature_id: str) -> dict[str, str]:
-    """Delete a feature."""
-    if not delete_feature(feature_id):
-        raise HTTPException(status_code=404, detail="Feature not found")
+@api_router.delete("/agent-sequences/{sequence_id}")
+async def api_delete_agent_sequence(sequence_id: str) -> dict[str, str]:
+    """Delete an agent sequence."""
+    if not delete_agent_sequence(sequence_id):
+        raise HTTPException(status_code=404, detail="Agent sequence not found")
     return {"status": "deleted"}
+
+
+# Agent Workflows API (Composable API Agent)
+@api_router.get("/agent-workflows", tags=["Agent Workflows"], summary="List Agent Workflows")
+async def api_list_workflows(user_id: str | None = None) -> list[AgentWorkflowConfig]:
+    """
+    List all agent workflows, optionally filtered by user.
+
+    **Query Parameters:**
+    - `user_id` (optional): Filter by user ID (omit for global workflows)
+
+    **Returns:** Array of AgentWorkflowConfig objects matching agents/*.json structure
+    """
+    return list_workflows(user_id)
+
+
+@api_router.post(
+    "/agent-workflows",
+    tags=["Agent Workflows"],
+    summary="Create Agent Workflow",
+    status_code=201,
+)
+async def api_create_workflow(body: AgentWorkflowCreate) -> AgentWorkflowConfig:
+    """
+    Create a new agent workflow with JSON config structure.
+
+    Creates a custom agent similar to agents/*.json files but stored in database.
+
+    **Request Body:**
+    - `agent_key`: Unique identifier for this agent
+    - `command`: CLI command to execute
+    - `args`: Dict of argument specifications (flag, type, required, default, description)
+    - `description` (optional): Human-readable description
+    - `version` (optional): Version string
+    - `capabilities` (optional): List of capability tags
+
+    **Example:**
+    ```json
+    {
+        "agent_key": "my_custom_agent",
+        "command": "python",
+        "args": {
+            "script": {
+                "flag": "",
+                "type": "string",
+                "required": true,
+                "description": "Python script to run"
+            },
+            "verbose": {
+                "flag": "--verbose",
+                "type": "bool",
+                "required": false,
+                "default": false
+            }
+        },
+        "description": "Custom Python script executor"
+    }
+    ```
+    """
+    workflow = AgentWorkflowConfig(**body.model_dump())
+    return save_workflow(workflow)
+
+
+@api_router.get("/agent-workflows/{workflow_id}")
+async def api_get_workflow(workflow_id: str) -> AgentWorkflowConfig:
+    """Get an agent workflow by ID."""
+    workflow = get_workflow(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return workflow
+
+
+@api_router.patch("/agent-workflows/{workflow_id}")
+async def api_update_workflow(workflow_id: str, body: AgentWorkflowUpdate) -> AgentWorkflowConfig:
+    """Update an agent workflow."""
+    workflow = get_workflow(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    updated = workflow.model_copy(update=body.model_dump(exclude_unset=True))
+    return save_workflow(updated)
+
+
+@api_router.delete("/agent-workflows/{workflow_id}")
+async def api_delete_workflow(workflow_id: str) -> dict[str, str]:
+    """Delete an agent workflow."""
+    if not delete_workflow(workflow_id):
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return {"status": "deleted"}
+
+
+@api_router.post("/agent-workflows/{workflow_id}/execute")
+async def api_execute_workflow(workflow_id: str, body: AgentWorkflowExecuteRequest) -> dict[str, Any]:
+    """
+    Execute a custom agent workflow.
+
+    **Path Parameters:**
+    - `workflow_id`: ID of the workflow to execute
+
+    **Request Body:**
+    - `task_config`: Task configuration (e.g., {"prompt": "...", "files": "..."})
+    - `timeout` (optional): Execution timeout in seconds (default: 120, max: 600)
+
+    **Returns:** Agent execution result with stdout, stderr, exit_code, success
+    """
+    workflow = get_workflow(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    agent = workflow.to_composable_agent()
+    result = await agent.execute(body.task_config, timeout=body.timeout)
+
+    return {
+        "success": result.success,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "exit_code": result.exit_code,
+        "execution_time": result.execution_time,
+        "timed_out": result.timed_out,
+    }
 
 
 # Organization API (Supabase-backed)
@@ -508,8 +848,7 @@ async def api_delete_organization(org_id: str) -> dict[str, str]:
 
 
 # Tasks API
-SMART_TASK_SYSTEM_PROMPT = """You are a task creation assistant. \
-Given selected text from a webpage, create a clear and actionable task.
+SMART_TASK_SYSTEM_PROMPT = """You are a task creation assistant. Given selected text from a webpage, create a clear and actionable task.
 
 Return a JSON object with:
 - title: A concise task title (max 80 chars)
@@ -617,9 +956,36 @@ async def api_delete_task(task_id: str) -> dict[str, str]:
     return {"status": "deleted"}
 
 
-@api_router.post("/tasks/smart")
+@api_router.post(
+    "/tasks/smart",
+    tags=["Tasks"],
+    summary="Create Smart Task",
+    response_description="AI-generated task from selected text",
+    status_code=201,
+)
 async def api_create_smart_task(body: SmartTaskRequest) -> TaskResponse:
-    """Create a task using AI to generate title and description from selected text."""
+    """
+    Create a task using AI to generate title and description from selected text.
+
+    Uses Claude Sonnet 4 via OpenRouter to analyze the selected text and create
+    a well-structured, actionable task with appropriate title and description.
+
+    **Request Body:**
+    - `selected_text`: Text selected by user (required)
+    - `page_title`: Title of the source page (optional)
+    - `page_url`: URL of the source page (optional)
+
+    **Example:**
+    ```json
+    {
+        "selected_text": "Implement JWT authentication with refresh tokens",
+        "page_title": "Security Best Practices",
+        "page_url": "https://example.com/security"
+    }
+    ```
+
+    **Response:** Task object with AI-generated title and description
+    """
     if not body.selected_text.strip():
         raise HTTPException(status_code=400, detail="Selected text is required")
 
@@ -627,8 +993,8 @@ async def api_create_smart_task(body: SmartTaskRequest) -> TaskResponse:
     user_prompt = f"""Create a task from this selected text:
 
 Selected text: "{body.selected_text}"
-{f'Page title: {body.page_title}' if body.page_title else ''}
-{f'Source URL: {body.page_url}' if body.page_url else ''}
+{f"Page title: {body.page_title}" if body.page_title else ""}
+{f"Source URL: {body.page_url}" if body.page_url else ""}
 
 Return JSON with "title" and "description" fields."""
 
@@ -767,9 +1133,17 @@ async def api_search_memory(body: SearchMemoryRequest) -> dict[str, list]:
     return {"memories": memories}
 
 
-@api_router.post("/memory/infer")
+@api_router.post(
+    "/memory/infer",
+    tags=["Memory"],
+    summary="Infer Memories from Page Content",
+    response_description="AI-suggested memories to save",
+)
 async def api_infer_memory(body: MemoryInferRequest) -> MemoryInferResponse:
-    """Use AI to analyze page content and suggest memories to save.
+    """
+    Use AI to analyze page content and suggest relevant memories to save.
+
+    This endpoint uses GPT-4o-mini to:
 
     This endpoint:
     1. Searches existing memories for context
@@ -786,8 +1160,7 @@ async def api_infer_memory(body: MemoryInferRequest) -> MemoryInferResponse:
         if existing_memories:
             existing_context = "\n".join(f"- {m.get('memory', '')}" for m in existing_memories[:5])
 
-    system_prompt = """You are a knowledge extraction assistant. \
-Analyze the provided page content and suggest 2-4 specific, actionable memories worth saving.
+    system_prompt = """You are a knowledge extraction assistant. Analyze the provided page content and suggest 2-4 specific, actionable memories worth saving.
 
 Focus on:
 - Technical patterns, APIs, or code examples
@@ -797,8 +1170,7 @@ Focus on:
 
 For each suggestion:
 1. Extract the core information (be concise, 1-2 sentences)
-2. Assign a category: architecture, integrations, code_style_guidelines, project_id, \
-observability, product, key_concept, or tasks
+2. Assign a category: architecture, integrations, code_style_guidelines, project_id, observability, product, key_concept, or tasks
 3. Explain why this is worth remembering
 
 Respond in JSON format:
@@ -809,12 +1181,12 @@ Respond in JSON format:
   ]
 }"""
 
-    user_prompt = f"""Page: {body.page_title or 'Unknown'}
-URL: {body.page_url or 'N/A'}
-User context: {body.user_context or 'None provided'}
+    user_prompt = f"""Page: {body.page_title or "Unknown"}
+URL: {body.page_url or "N/A"}
+User context: {body.user_context or "None provided"}
 
 Existing memories (avoid duplicating):
-{existing_context or 'None'}
+{existing_context or "None"}
 
 Page content:
 {body.page_content[:8000]}"""
@@ -868,6 +1240,251 @@ async def api_list_agents() -> list[AgentResponse]:
     return result
 
 
+# GitHub Repository API
+@api_router.get("/github/user")
+async def api_get_github_user(authorization: str | None = Header(None)):
+    """Get authenticated GitHub user."""
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+
+    try:
+        client = get_github_client(token)
+        user = await client.get_user()
+        return user
+    except Exception as e:
+        logger.error(f"GitHub API error: {e}")
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+@api_router.get("/github/repositories")
+async def api_list_github_repositories(
+    authorization: str | None = Header(None),
+    visibility: str = "all",
+    sort: str = "updated",
+    per_page: int = 100,
+    page: int = 1,
+) -> list[GitHubRepository]:
+    """List GitHub repositories for authenticated user."""
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+
+    try:
+        client = get_github_client(token)
+        repositories = await client.list_repositories(
+            visibility=visibility,
+            sort=sort,
+            per_page=per_page,
+            page=page,
+        )
+        return repositories
+    except Exception as e:
+        logger.error(f"GitHub API error: {e}")
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+@api_router.get("/github/repositories/search")
+async def api_search_github_repositories(
+    q: str,
+    authorization: str | None = Header(None),
+    sort: str = "updated",
+    per_page: int = 30,
+    page: int = 1,
+) -> list[GitHubRepository]:
+    """Search GitHub repositories for authenticated user."""
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+
+    try:
+        client = get_github_client(token)
+        repositories = await client.search_repositories(
+            query=q,
+            sort=sort,
+            per_page=per_page,
+            page=page,
+        )
+        return repositories
+    except Exception as e:
+        logger.error(f"GitHub API error: {e}")
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+@api_router.get("/github/repositories/{owner}/{repo}")
+async def api_get_github_repository(
+    owner: str,
+    repo: str,
+    authorization: str | None = Header(None),
+) -> GitHubRepository:
+    """Get specific GitHub repository."""
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+
+    try:
+        client = get_github_client(token)
+        repository = await client.get_repository(owner, repo)
+        return repository
+    except Exception as e:
+        logger.error(f"GitHub API error: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@api_router.post("/github/repositories/{owner}/{repo}/deploy")
+async def api_deploy_repository(
+    owner: str,
+    repo: str,
+    body: dict,
+    authorization: str | None = Header(None),
+) -> dict[str, str]:
+    """Deploy MCP server for a GitHub repository."""
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+
+    try:
+        client = get_github_client(token)
+
+        # Get repository details
+        repository = await client.get_repository(owner, repo)
+
+        # Create webhook if specified
+        if body.get("create_webhook", False):
+            webhook_url = body.get("webhook_url", f"{settings.base_url}/webhooks/github")
+            webhook_secret = settings.github_webhook_secret
+            if webhook_secret:
+                await client.create_webhook(
+                    owner=owner,
+                    repo=repo,
+                    webhook_url=webhook_url,
+                    secret=webhook_secret,
+                )
+
+        # TODO: Implement actual deployment logic
+        # This could involve:
+        # - Creating deployment configuration
+        # - Setting up MCP server instance
+        # - Configuring CI/CD pipeline
+        # - Setting up monitoring
+
+        # For now, just create a deployment record
+        supabase = get_supabase()
+        deployment_data = {
+            "repository_id": repository.id,
+            "repository_name": repository.full_name,
+            "owner": repository.owner,
+            "branch": body.get("branch", repository.default_branch),
+            "status": "deployed",
+            "deployment_url": f"https://mcp-{owner}-{repo}.fly.dev",  # Example deployment URL
+            "created_at": datetime.now().isoformat(),
+        }
+
+        supabase.table("deployments").insert(deployment_data).execute()
+
+        return {
+            "status": "success",
+            "message": f"Repository {repository.full_name} deployed successfully",
+            "deployment_url": deployment_data["deployment_url"],
+        }
+    except Exception as e:
+        logger.error(f"Deployment error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/github/repositories/{owner}/{repo}/webhooks")
+async def api_list_repository_webhooks(
+    owner: str,
+    repo: str,
+    authorization: str | None = Header(None),
+) -> list[dict]:
+    """List webhooks for a GitHub repository."""
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+
+    try:
+        client = get_github_client(token)
+        webhooks = await client.list_webhooks(owner, repo)
+        return webhooks
+    except Exception as e:
+        logger.error(f"GitHub API error: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@api_router.get("/deployments")
+async def api_list_deployments(
+    authorization: str | None = Header(None),
+    status: str | None = None,
+    owner: str | None = None,
+) -> list[dict]:
+    """List deployments, optionally filtered by status or owner."""
+    try:
+        supabase = get_supabase()
+        query = supabase.table("deployments").select("*")
+
+        if status:
+            query = query.eq("status", status)
+        if owner:
+            query = query.eq("owner", owner)
+
+        response = query.order("created_at", desc=True).execute()
+        return response.data
+    except Exception as e:
+        logger.error(f"Failed to list deployments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get("/deployments/{deployment_id}")
+async def api_get_deployment(
+    deployment_id: str,
+    authorization: str | None = Header(None),
+) -> dict:
+    """Get specific deployment details."""
+    try:
+        supabase = get_supabase()
+        response = supabase.table("deployments").select("*").eq("id", deployment_id).single().execute()
+        return response.data
+    except Exception as e:
+        logger.error(f"Failed to get deployment: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@api_router.patch("/deployments/{deployment_id}")
+async def api_update_deployment(
+    deployment_id: str,
+    body: dict,
+    authorization: str | None = Header(None),
+) -> dict:
+    """Update deployment status or configuration."""
+    try:
+        supabase = get_supabase()
+        update_data = {k: v for k, v in body.items() if v is not None}
+        if "status" in update_data and update_data["status"] == "deployed":
+            update_data["deployed_at"] = datetime.now().isoformat()
+
+        response = supabase.table("deployments").update(update_data).eq("id", deployment_id).execute()
+        return response.data[0]
+    except Exception as e:
+        logger.error(f"Failed to update deployment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.delete("/deployments/{deployment_id}")
+async def api_delete_deployment(
+    deployment_id: str,
+    authorization: str | None = Header(None),
+) -> dict[str, str]:
+    """Delete a deployment."""
+    try:
+        supabase = get_supabase()
+        supabase.table("deployments").delete().eq("id", deployment_id).execute()
+        return {"status": "deleted"}
+    except Exception as e:
+        logger.error(f"Failed to delete deployment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Include API router after all routes are defined
 api_app.include_router(api_router)
 
@@ -889,11 +1506,18 @@ async def main_http() -> None:
     # Combine MCP and REST routes with proper lifespan
     combined_app = FastAPI(
         title="Glyx MCP + REST API",
+        description=api_app.description,
+        version=api_app.version,
+        contact=api_app.contact,
+        license_info=api_app.license_info,
+        openapi_tags=api_app.openapi_tags,
         routes=[
             *mcp_app.routes,  # MCP protocol at /mcp
             *api_app.routes,  # REST API routes
         ],
         lifespan=mcp_app.lifespan,  # Essential for MCP session management
+        docs_url="/docs",
+        redoc_url="/redoc",
     )
 
     # Exception handlers must be on combined_app (not api_app) to work

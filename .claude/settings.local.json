@@ -1,14 +1,21 @@
 {
   "permissions": {
     "allow": [
-      "Bash(uv run python:*)"
+      "Bash(uv run python:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(find:*)",
+      "Bash(git log:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(psql $DATABASE_URL -c \"\\dt\")",
+      "Bash(git worktree:*)"
     ],
+    "deny": [],
+    "ask": [],
     "additionalDirectories": [
       "/home/parallels/glyx-mcp-tasks/",
       "/Users/telsiz/work/glyx/"
-    ],
-    "deny": [],
-    "ask": []
+    ]
   },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
