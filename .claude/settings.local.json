@@ -9,7 +9,13 @@
       "Bash(cat:*)",
       "Bash(psql $DATABASE_URL -c \"\\dt\")",
       "Bash(git worktree:*)",
-      "Bash(uv sync:*)"
+      "Bash(uv sync:*)",
+      "WebFetch(domain:www.mintlify.com)",
+      "Bash(curl:*)",
+      "Bash(chmod:*)",
+      "Bash(./scripts/update_openapi.sh:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd model logging to agent execution\n\n- Log model parameter in all agent execution paths\n- Include model in [AGENT EXECUTE], [AGENT CMD], [AGENT RESULT] logs\n- Add model to [AGENT STREAM] execution logs\n- Include model in WebSocket broadcast events (agent.start, agent.finish)\n- Update orchestrator tool functions to log model parameter\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": [],

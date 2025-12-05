@@ -1,0 +1,311 @@
+---
+title: 'Agent Orchestration'
+description: 'Learn how to coordinate multiple AI agents for complex tasks'
+---
+
+## Overview
+
+The Glyx orchestrator coordinates multiple AI agents to complete complex, multi-step tasks. It intelligently decides which agents to invoke, manages handoffs between agents, and aggregates results.
+
+## How It Works
+
+The orchestrator uses a **reasoning model** (Claude Sonnet 4) to:
+
+1. Break down complex tasks into subtasks
+2. Select appropriate agents for each subtask
+3. Execute agents in sequence or parallel
+4. Handle errors and retries
+5. Aggregate and synthesize results
+
+## Using the Orchestrator
+
+### Via MCP Tool
+
+If you're using Claude Code with the glyx-mcp MCP server:
+
+```
+Use the orchestrate tool to implement a user authentication system with JWT tokens
+```
+
+The orchestrator will:
+- Analyze the task
+- Select appropriate coding agents (Aider, Cursor, etc.)
+- Coordinate implementation, testing, and review
+- Return aggregated results
+
+### Via REST API
+
+Stream real-time updates as the orchestrator executes:
+
+```javascript
+const response = await fetch('http://localhost:8000/stream/cursor', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    task: {
+      id: 'task-123',
+      title: 'Implement Authentication',
+      description: 'Add JWT-based authentication with refresh tokens'
+    },
+    organization_id: 'org-uuid',
+    organization_name: 'MyOrg'
+  })
+});
+
+// Server-Sent Events stream
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { value, done } = await reader.read();
+  if (done) break;
+
+  const chunk = decoder.decode(value);
+  const events = chunk.split('\n\n').filter(Boolean);
+
+  for (const event of events) {
+    if (event.startsWith('data: ')) {
+      const data = JSON.parse(event.slice(6));
+      console.log(data.type, data.content);
+    }
+  }
+}
+```
+
+### Event Types
+
+The orchestrator emits several event types during execution:
+
+| Event | Description |
+|-------|-------------|
+| `progress` | Status updates (e.g., "Starting orchestrator...") |
+| `tool_call` | Agent tool invocation |
+| `tool_output` | Tool execution results |
+| `message` | LLM responses and reasoning |
+| `thinking` | Internal reasoning steps |
+| `complete` | Task completion |
+| `error` | Error occurred |
+
+## Available Agents
+
+The orchestrator can invoke any registered agent:
+
+### Coding Agents
+
+- **Aider** - AI pair programmer for focused code changes
+- **Cursor** - Cloud-based coding agent for autonomous implementation
+- **Claude** - Anthropic's Claude for code review and analysis
+
+### Specialized Agents
+
+- **Codex** - OpenAI's Codex for code generation
+- **Grok** - X.AI's Grok for analysis tasks
+
+## Example: Feature Implementation
+
+Here's a complete example of using the orchestrator for feature development:
+
+<Steps>
+  <Step title="Define the task">
+    ```json
+    {
+      "id": "feature-001",
+      "title": "Add Rate Limiting",
+      "description": "Implement Redis-based rate limiting middleware for the API with configurable limits per endpoint"
+    }
+    ```
+  </Step>
+
+  <Step title="Orchestrator analyzes">
+    The orchestrator breaks this into:
+    1. Research existing rate limiting solutions
+    2. Implement Redis client connection
+    3. Create rate limiting middleware
+    4. Add configuration management
+    5. Write tests
+    6. Update documentation
+  </Step>
+
+  <Step title="Agent selection">
+    - **Aider**: Implement Redis client and middleware
+    - **Claude**: Review code for security issues
+    - **Aider**: Write comprehensive tests
+    - **Claude**: Update documentation
+  </Step>
+
+  <Step title="Execution">
+    The orchestrator executes agents in the determined order, passing context between stages.
+  </Step>
+
+  <Step title="Review and synthesis">
+    Final review ensures all subtasks are complete and integration is successful.
+  </Step>
+</Steps>
+
+## Agent Handoffs
+
+The orchestrator manages handoffs between agents using **context passing**:
+
+```python
+# Agent 1: Aider implements the feature
+aider_result = await aider_agent.execute({
+    "prompt": "Implement rate limiting middleware",
+    "files": "src/middleware/rate_limit.py"
+})
+
+# Agent 2: Claude reviews the implementation
+claude_result = await claude_agent.execute({
+    "prompt": f"Review this implementation for security issues:\n\n{aider_result.stdout}"
+})
+
+# Agent 3: Aider addresses review feedback
+final_result = await aider_agent.execute({
+    "prompt": f"Address these review comments:\n\n{claude_result.stdout}",
+    "files": "src/middleware/rate_limit.py"
+})
+```
+
+## Configuration
+
+Configure the orchestrator behavior:
+
+```python
+from glyx_python_sdk import GlyxOrchestrator
+
+orchestrator = GlyxOrchestrator(
+    agent_name="FeatureOrchestrator",
+    model="openrouter/anthropic/claude-sonnet-4",  # Reasoning model
+    mcp_servers=[],  # Optional MCP server connections
+    session_id="feature-001",  # Unique session ID
+)
+
+# Execute task
+async for item in orchestrator.run_prompt_streamed_items(prompt):
+    # Process streaming items (tool calls, messages, etc.)
+    pass
+
+await orchestrator.cleanup()
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Break down complex tasks">
+    Provide clear, decomposable task descriptions. The orchestrator works best with well-defined goals.
+
+    **Good**: "Implement JWT authentication with refresh tokens, including token storage, validation middleware, and refresh endpoint"
+
+    **Bad**: "Make the app more secure"
+  </Accordion>
+
+  <Accordion title="Use appropriate agents">
+    Different agents excel at different tasks:
+    - **Aider**: Focused code changes with git integration
+    - **Cursor**: Autonomous full-feature implementation
+    - **Claude**: Code review, analysis, documentation
+  </Accordion>
+
+  <Accordion title="Monitor execution">
+    Use streaming to monitor progress and catch issues early:
+    ```javascript
+    eventSource.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.type === 'error') {
+        console.error('Orchestration error:', data.error);
+        eventSource.close();
+      }
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="Handle errors gracefully">
+    The orchestrator will retry failed agent invocations, but you should handle fatal errors:
+    ```python
+    try:
+        result = await orchestrator.run_prompt_streamed_items(prompt)
+    except Exception as e:
+        logger.error(f"Orchestration failed: {e}")
+        # Fallback or notify user
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Usage
+
+### Custom Agent Sequences
+
+Define explicit agent sequences for predictable workflows:
+
+```python
+from glyx_python_sdk import AgentSequence, Pipeline
+
+sequence = AgentSequence(
+    name="Code Review Pipeline",
+    description="Implementation -> Review -> Testing",
+    stages=[
+        {"role": "CODER", "agent": "AIDER", "status": "pending"},
+        {"role": "REVIEWER", "agent": "CLAUDE", "status": "pending"},
+        {"role": "QA", "agent": "CLAUDE", "status": "pending"},
+    ]
+)
+
+pipeline = Pipeline(agent_sequence=sequence)
+```
+
+### Memory Integration
+
+The orchestrator can use memory to maintain context:
+
+```python
+from glyx_python_sdk import save_memory, search_memory
+
+# Save orchestration results
+save_memory(
+    content="Successfully implemented rate limiting with Redis",
+    agent_id="orchestrator",
+    run_id=session_id,
+    category="architecture"
+)
+
+# Search for relevant context
+memories = search_memory(
+    query="rate limiting implementation",
+    category="architecture",
+    limit=5
+)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Memory Management"
+    icon="brain"
+    href="/guides/memory-management"
+  >
+    Learn about semantic memory
+  </Card>
+  <Card
+    title="Feature Pipelines"
+    icon="diagram-project"
+    href="/guides/feature-pipelines"
+  >
+    Multi-stage development workflows
+  </Card>
+  <Card
+    title="Streaming API"
+    icon="bolt"
+    href="/api-reference/POST/stream-cursor"
+  >
+    Real-time execution updates
+  </Card>
+  <Card
+    title="Agent Workflows"
+    icon="robot"
+    href="/api-reference/POST/agent-workflows"
+  >
+    Create custom agents
+  </Card>
+</CardGroup>

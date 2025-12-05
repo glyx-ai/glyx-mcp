@@ -1,0 +1,433 @@
+---
+title: 'Webhooks'
+description: 'GitHub and Linear webhook integration for automated workflows'
+---
+
+## Overview
+
+Glyx MCP supports webhooks from GitHub and Linear to trigger automated workflows, track repository activity, and synchronize issue management.
+
+## GitHub Webhooks
+
+### Setup
+
+<Steps>
+  <Step title="Configure webhook in GitHub">
+    Go to your repository settings:
+
+    1. Navigate to **Settings** → **Webhooks** → **Add webhook**
+    2. Set **Payload URL**: `https://your-domain.com/webhooks/github`
+    3. Set **Content type**: `application/json`
+    4. Set **Secret**: Your webhook secret (store in `.env`)
+    5. Select events:
+       - Push events
+       - Pull request events
+       - Issue events
+       - Release events
+  </Step>
+
+  <Step title="Add secret to environment">
+    ```bash .env
+    GITHUB_WEBHOOK_SECRET=your-webhook-secret-here
+    ```
+  </Step>
+
+  <Step title="Verify webhook">
+    GitHub will send a ping event to verify the webhook is working.
+
+    Check the webhook delivery history in GitHub settings.
+  </Step>
+</Steps>
+
+### Supported Events
+
+| Event | Trigger | Action |
+|-------|---------|--------|
+| `push` | Code pushed to branch | Record commit activity |
+| `pull_request` | PR opened/updated/merged | Track PR lifecycle |
+| `issues` | Issue opened/closed | Sync with task management |
+| `release` | Release published | Track deployments |
+
+### Webhook Payload
+
+GitHub sends event data to `/webhooks/github`:
+
+```json
+{
+  "action": "opened",
+  "repository": {
+    "full_name": "htelsiz/glyx-mcp",
+    "html_url": "https://github.com/htelsiz/glyx-mcp"
+  },
+  "pull_request": {
+    "number": 42,
+    "title": "Add authentication system",
+    "user": {
+      "login": "htelsiz"
+    },
+    "html_url": "https://github.com/htelsiz/glyx-mcp/pull/42"
+  }
+}
+```
+
+### Activity Tracking
+
+All webhook events are stored in the `activities` table:
+
+```sql
+SELECT * FROM activities
+WHERE org_id = 'htelsiz/glyx-mcp'
+ORDER BY created_at DESC;
+```
+
+Access via REST API:
+
+```bash
+curl http://localhost:8000/api/github/repositories
+```
+
+**Response:**
+
+```json
+[
+  {
+    "full_name": "htelsiz/glyx-mcp",
+    "owner": "htelsiz",
+    "name": "glyx-mcp",
+    "last_activity": "2024-12-04T10:00:00Z"
+  }
+]
+```
+
+## Linear Webhooks
+
+### Setup
+
+<Steps>
+  <Step title="Create webhook in Linear">
+    1. Go to **Settings** → **API** → **Webhooks**
+    2. Click **Create webhook**
+    3. Set **URL**: `https://your-domain.com/webhooks/linear`
+    4. Set **Secret**: Your webhook secret
+    5. Select resources:
+       - Issues
+       - Comments
+       - Projects
+  </Step>
+
+  <Step title="Add secret to environment">
+    ```bash .env
+    LINEAR_WEBHOOK_SECRET=your-linear-webhook-secret
+    ```
+  </Step>
+
+  <Step title="Verify webhook">
+    Linear will send test events to verify configuration.
+  </Step>
+</Steps>
+
+### Supported Events
+
+| Event | Trigger | Action |
+|-------|---------|--------|
+| `Issue` | Issue created/updated | Sync with task management |
+| `Comment` | Comment added | Track discussions |
+| `Project` | Project updated | Monitor project status |
+
+### Issue Sync
+
+When a Linear issue is created, Glyx MCP can:
+
+1. Create corresponding task in Supabase
+2. Trigger agent orchestration
+3. Store context in memory
+
+```javascript
+// Linear webhook payload
+{
+  "action": "create",
+  "type": "Issue",
+  "data": {
+    "id": "issue-123",
+    "title": "Implement rate limiting",
+    "description": "Add Redis-based rate limiting",
+    "state": {
+      "name": "In Progress"
+    },
+    "team": {
+      "id": "team-456",
+      "name": "Engineering"
+    }
+  }
+}
+```
+
+### Task Creation
+
+Linear issues automatically create tasks:
+
+```python
+# Webhook handler creates task
+task = await create_task({
+    "title": issue_data["title"],
+    "description": issue_data["description"],
+    "organization_id": team_id,
+    "linear_issue_id": issue_data["id"],
+    "status": "in_progress"
+})
+
+# Trigger orchestration
+await trigger_orchestration(task)
+```
+
+## Custom Webhook Handlers
+
+Extend webhook functionality with custom handlers:
+
+```python
+from fastapi import APIRouter, Request
+from glyx.mcp.webhooks.base import verify_webhook_signature
+
+router = APIRouter(prefix="/webhooks")
+
+@router.post("/custom")
+async def custom_webhook(request: Request):
+    """Handle custom webhook events."""
+    # Verify signature
+    signature = request.headers.get("X-Custom-Signature")
+    payload = await request.body()
+
+    if not verify_webhook_signature(payload, signature, secret=CUSTOM_SECRET):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    # Parse event
+    event = await request.json()
+
+    # Handle event
+    match event["type"]:
+        case "deployment":
+            await handle_deployment(event)
+        case "alert":
+            await handle_alert(event)
+        case _:
+            logger.warning(f"Unknown event type: {event['type']}")
+
+    return {"status": "ok"}
+
+async def handle_deployment(event):
+    """Handle deployment event."""
+    # Create deployment record
+    await create_deployment({
+        "status": event["status"],
+        "version": event["version"],
+        "deployed_at": event["timestamp"]
+    })
+
+    # Notify via WebSocket
+    await ws_manager.broadcast({
+        "type": "deployment",
+        "data": event
+    })
+```
+
+## Webhook Security
+
+<AccordionGroup>
+  <Accordion title="Verify signatures">
+    Always verify webhook signatures to prevent spoofing:
+
+    ```python
+    import hmac
+    import hashlib
+
+    def verify_signature(payload: bytes, signature: str, secret: str) -> bool:
+        """Verify HMAC signature."""
+        expected = hmac.new(
+            secret.encode(),
+            payload,
+            hashlib.sha256
+        ).hexdigest()
+
+        return hmac.compare_digest(signature, f"sha256={expected}")
+    ```
+  </Accordion>
+
+  <Accordion title="Use HTTPS">
+    Webhooks should only be received over HTTPS to prevent interception:
+
+    ```python
+    # Reject non-HTTPS requests in production
+    if not request.url.scheme == "https" and not settings.debug:
+        raise HTTPException(status_code=400, detail="HTTPS required")
+    ```
+  </Accordion>
+
+  <Accordion title="Rate limiting">
+    Implement rate limiting on webhook endpoints:
+
+    ```python
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+
+    limiter = Limiter(key_func=get_remote_address)
+
+    @router.post("/webhooks/github")
+    @limiter.limit("100/minute")
+    async def github_webhook(request: Request):
+        # Handle webhook
+        pass
+    ```
+  </Accordion>
+
+  <Accordion title="Idempotency">
+    Handle duplicate webhook deliveries:
+
+    ```python
+    # Store event IDs to detect duplicates
+    processed_events = set()
+
+    event_id = request.headers.get("X-GitHub-Delivery")
+    if event_id in processed_events:
+        return {"status": "duplicate", "event_id": event_id}
+
+    processed_events.add(event_id)
+    # Process event...
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Webhooks
+
+### Webhook Logs
+
+Check webhook delivery logs:
+
+```python
+# Query recent webhook events
+from glyx.mcp.server import get_supabase
+
+supabase = get_supabase()
+events = supabase.table("activities")\
+    .select("*")\
+    .eq("type", "webhook")\
+    .order("created_at", desc=True)\
+    .limit(50)\
+    .execute()
+
+for event in events.data:
+    print(f"{event['created_at']}: {event['content']}")
+```
+
+### Test Webhooks Locally
+
+Use tools like ngrok to test webhooks locally:
+
+```bash
+# Start ngrok
+ngrok http 8000
+
+# Use ngrok URL in webhook configuration
+https://abc123.ngrok.io/webhooks/github
+```
+
+### Webhook Replay
+
+Replay failed webhooks:
+
+```python
+@router.post("/webhooks/replay/{event_id}")
+async def replay_webhook(event_id: str):
+    """Replay a webhook event."""
+    # Fetch event
+    event = await get_event(event_id)
+
+    # Replay
+    await process_webhook(event.payload, event.type)
+
+    return {"status": "replayed", "event_id": event_id}
+```
+
+## Webhook Analytics
+
+Track webhook activity:
+
+```python
+# Get webhook statistics
+stats = supabase.table("activities")\
+    .select("type, count")\
+    .eq("org_id", "htelsiz/glyx-mcp")\
+    .execute()
+
+print("Webhook activity:")
+for stat in stats.data:
+    print(f"  {stat['type']}: {stat['count']}")
+```
+
+## Example Workflows
+
+### Auto-Deploy on Release
+
+```python
+@router.post("/webhooks/github")
+async def github_webhook(request: Request):
+    event = await request.json()
+
+    if event.get("action") == "published" and "release" in event:
+        # Trigger deployment
+        await deploy_release(
+            version=event["release"]["tag_name"],
+            repository=event["repository"]["full_name"]
+        )
+```
+
+### Issue Triage
+
+```python
+@router.post("/webhooks/linear")
+async def linear_webhook(request: Request):
+    event = await request.json()
+
+    if event["type"] == "Issue" and event["action"] == "create":
+        # Auto-assign based on labels
+        issue = event["data"]
+        assignee = await auto_assign_issue(issue)
+
+        # Update Linear issue
+        await linear_client.update_issue(
+            issue["id"],
+            assignee_id=assignee.id
+        )
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Agent Orchestration"
+    icon="diagram-project"
+    href="/guides/agent-orchestration"
+  >
+    Trigger orchestration from webhooks
+  </Card>
+  <Card
+    title="Tasks API"
+    icon="list-check"
+    href="/api-reference/POST/tasks"
+  >
+    Create tasks from webhook events
+  </Card>
+  <Card
+    title="GitHub API"
+    icon="github"
+    href="/api-reference/GET/github-repositories"
+  >
+    Query repository activity
+  </Card>
+  <Card
+    title="Deployments"
+    icon="rocket"
+    href="/api-reference/GET/deployments"
+  >
+    Track deployment status
+  </Card>
+</CardGroup>

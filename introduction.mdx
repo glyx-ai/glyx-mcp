@@ -1,0 +1,117 @@
+---
+title: Introduction
+description: 'Welcome to Glyx MCP - A composable AI agent framework with FastMCP server integration'
+---
+
+# Glyx MCP
+
+Glyx MCP is a powerful FastMCP server built on the **glyx-python-sdk** that provides composable AI agent wrappers for complex multi-agent orchestration.
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.svg"
+  alt="Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.svg"
+  alt="Hero Dark"
+/>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card
+    title="Multi-Agent Orchestration"
+    icon="robot"
+    href="/guides/agent-orchestration"
+  >
+    Coordinate multiple AI agents to complete complex tasks with intelligent handoffs
+  </Card>
+  <Card
+    title="Real-time Streaming"
+    icon="bolt"
+    href="/api-reference/POST/stream-cursor"
+  >
+    WebSocket and SSE support for live updates during agent execution
+  </Card>
+  <Card
+    title="Memory Management"
+    icon="brain"
+    href="/guides/memory-management"
+  >
+    Store and retrieve project context with semantic search powered by Mem0
+  </Card>
+  <Card
+    title="Feature Pipelines"
+    icon="diagram-project"
+    href="/guides/feature-pipelines"
+  >
+    Multi-stage workflows for feature development with review and testing stages
+  </Card>
+</CardGroup>
+
+## Architecture
+
+Glyx MCP consists of two main components:
+
+### glyx-python-sdk (Core Framework)
+
+The SDK provides the foundational framework for:
+- Agent configuration and execution
+- Orchestration primitives
+- Memory management
+- Pipeline workflows
+
+**Location**: `packages/sdk/`
+**Package**: [glyx-python-sdk on TestPyPI](https://test.pypi.org/project/glyx-python-sdk/)
+
+### glyx-ai (MCP Server)
+
+The FastMCP/FastAPI server providing:
+- MCP tools for Claude Code integration
+- REST API endpoints
+- WebSocket support
+- GitHub and Linear webhooks
+
+**Location**: `src/glyx/`
+
+## Use Cases
+
+- **Autonomous Coding**: Deploy AI agents to implement features, review code, and run tests
+- **Task Automation**: Create smart tasks from selected text with AI-powered generation
+- **Knowledge Management**: Build a searchable memory of project decisions and patterns
+- **Integration Hub**: Connect GitHub, Linear, and other services through webhooks
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get up and running in 5 minutes
+  </Card>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api-reference/introduction"
+  >
+    Explore the complete API documentation
+  </Card>
+  <Card
+    title="Authentication"
+    icon="key"
+    href="/authentication"
+  >
+    Learn how to authenticate with Supabase Auth
+  </Card>
+  <Card
+    title="GitHub Repository"
+    icon="github"
+    href="https://github.com/htelsiz/glyx-mcp"
+  >
+    View the source code and contribute
+  </Card>
+</CardGroup>

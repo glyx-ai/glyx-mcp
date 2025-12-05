@@ -1,0 +1,494 @@
+---
+title: 'Feature Pipelines'
+description: 'Multi-stage development workflows with implementation, review, and testing'
+---
+
+## Overview
+
+Feature pipelines provide a structured, multi-stage approach to feature development. Each pipeline consists of sequential stages with different agents and roles, ensuring code quality through automated review and testing.
+
+## Pipeline Stages
+
+A default pipeline includes three stages:
+
+| Stage | Role | Agent | Purpose |
+|-------|------|-------|---------|
+| 1. Implementation | CODER | CURSOR | Autonomous feature implementation |
+| 2. Code Review | REVIEWER | CLAUDE | Security and quality review |
+| 3. Testing | QA | CLAUDE | Test generation and validation |
+
+## Creating a Pipeline
+
+### Via REST API
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST http://localhost:8000/api/agent-sequences \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "User Authentication",
+    "description": "JWT-based authentication with refresh tokens"
+  }'
+```
+
+```python Python
+import httpx
+
+response = await httpx.post(
+    "http://localhost:8000/api/agent-sequences",
+    json={
+        "name": "User Authentication",
+        "description": "JWT-based authentication with refresh tokens"
+    }
+)
+sequence = response.json()
+print(f"Created sequence: {sequence['id']}")
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/agent-sequences', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    name: 'User Authentication',
+    description: 'JWT-based authentication with refresh tokens'
+  })
+});
+
+const sequence = await response.json();
+console.log('Created sequence:', sequence.id);
+```
+
+</CodeGroup>
+
+**Response:**
+
+```json
+{
+  "id": "seq-123",
+  "name": "User Authentication",
+  "description": "JWT-based authentication with refresh tokens",
+  "status": "in_progress",
+  "stages": [
+    {
+      "role": "CODER",
+      "agent": "CURSOR",
+      "status": "in_progress",
+      "artifacts": [],
+      "conversation": []
+    },
+    {
+      "role": "REVIEWER",
+      "agent": "CLAUDE",
+      "status": "pending",
+      "artifacts": [],
+      "conversation": []
+    },
+    {
+      "role": "QA",
+      "agent": "CLAUDE",
+      "status": "pending",
+      "artifacts": [],
+      "conversation": []
+    }
+  ],
+  "created_at": "2024-12-04T10:00:00Z",
+  "updated_at": "2024-12-04T10:00:00Z"
+}
+```
+
+## Pipeline Execution
+
+Pipelines execute stages sequentially:
+
+<Steps>
+  <Step title="Stage 1: Implementation">
+    **CURSOR** agent implements the feature:
+
+    ```python
+    # Pseudo-code representation
+    cursor_result = await cursor_agent.execute({
+        "prompt": "Implement JWT authentication with refresh tokens",
+        "files": ["src/auth/", "tests/auth/"]
+    })
+
+    # Artifacts: Code files, commit hash
+    artifacts.append({
+        "type": "implementation",
+        "files": cursor_result.modified_files,
+        "commit": cursor_result.commit_hash
+    })
+    ```
+  </Step>
+
+  <Step title="Stage 2: Code Review">
+    **CLAUDE** agent reviews the implementation:
+
+    ```python
+    review_prompt = f"""
+    Review this authentication implementation:
+
+    Changes: {artifacts[0]['files']}
+    Commit: {artifacts[0]['commit']}
+
+    Check for:
+    - Security vulnerabilities
+    - Code quality issues
+    - Best practices violations
+    """
+
+    review_result = await claude_agent.execute({
+        "prompt": review_prompt
+    })
+
+    # Artifacts: Review feedback
+    artifacts.append({
+        "type": "review",
+        "findings": review_result.findings,
+        "approved": review_result.approved
+    })
+    ```
+  </Step>
+
+  <Step title="Stage 3: Testing">
+    **CLAUDE** agent generates and runs tests:
+
+    ```python
+    test_prompt = f"""
+    Generate comprehensive tests for:
+    {artifacts[0]['files']}
+
+    Include:
+    - Unit tests for token generation/validation
+    - Integration tests for auth flow
+    - Security tests for common vulnerabilities
+    """
+
+    test_result = await claude_agent.execute({
+        "prompt": test_prompt
+    })
+
+    # Artifacts: Test files, coverage report
+    artifacts.append({
+        "type": "testing",
+        "test_files": test_result.test_files,
+        "coverage": test_result.coverage,
+        "passed": test_result.all_tests_passed
+    })
+    ```
+  </Step>
+
+  <Step title="Pipeline Complete">
+    Mark pipeline as complete when all stages pass:
+
+    ```python
+    if all_stages_passed:
+        sequence.status = "done"
+    else:
+        sequence.status = "review"  # Needs manual review
+    ```
+  </Step>
+</Steps>
+
+## Managing Pipelines
+
+### List Pipelines
+
+<CodeGroup>
+
+```bash All Pipelines
+curl http://localhost:8000/api/agent-sequences
+```
+
+```bash Filter by Status
+curl "http://localhost:8000/api/agent-sequences?status=in_progress"
+```
+
+```python Python
+# All pipelines
+response = await httpx.get("http://localhost:8000/api/agent-sequences")
+sequences = response.json()
+
+# Filter by status
+response = await httpx.get(
+    "http://localhost:8000/api/agent-sequences",
+    params={"status": "in_progress"}
+)
+```
+
+</CodeGroup>
+
+### Get Pipeline Details
+
+```bash
+curl http://localhost:8000/api/agent-sequences/{sequence_id}
+```
+
+**Response includes:**
+- Current stage status
+- Artifacts from each stage
+- Conversation history
+- Overall pipeline status
+
+### Update Pipeline Status
+
+```bash
+curl -X PATCH http://localhost:8000/api/agent-sequences/{sequence_id} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "review"
+  }'
+```
+
+### Delete Pipeline
+
+```bash
+curl -X DELETE http://localhost:8000/api/agent-sequences/{sequence_id}
+```
+
+## Custom Pipelines
+
+Create pipelines with custom stages:
+
+```python
+from glyx_python_sdk import AgentSequence, Pipeline
+
+# Define custom sequence
+sequence = AgentSequence(
+    name="Security Audit Pipeline",
+    description="Comprehensive security review and penetration testing",
+    stages=[
+        {
+            "role": "SECURITY_SCANNER",
+            "agent": "CLAUDE",
+            "status": "pending",
+            "prompt": "Run SAST analysis on codebase"
+        },
+        {
+            "role": "PENETRATION_TESTER",
+            "agent": "CLAUDE",
+            "status": "pending",
+            "prompt": "Perform security penetration testing"
+        },
+        {
+            "role": "REMEDIATION",
+            "agent": "AIDER",
+            "status": "pending",
+            "prompt": "Fix identified security issues"
+        },
+        {
+            "role": "VERIFICATION",
+            "agent": "CLAUDE",
+            "status": "pending",
+            "prompt": "Verify all security issues resolved"
+        }
+    ]
+)
+
+pipeline = Pipeline(agent_sequence=sequence)
+```
+
+## Pipeline Artifacts
+
+Each stage produces artifacts:
+
+```json
+{
+  "stage": "implementation",
+  "artifacts": [
+    {
+      "type": "code",
+      "files": [
+        "src/auth/jwt.py",
+        "src/auth/middleware.py"
+      ],
+      "commit": "abc123",
+      "timestamp": "2024-12-04T10:15:00Z"
+    }
+  ]
+}
+```
+
+```json
+{
+  "stage": "review",
+  "artifacts": [
+    {
+      "type": "review_report",
+      "findings": [
+        {
+          "severity": "high",
+          "file": "src/auth/jwt.py",
+          "line": 45,
+          "issue": "Weak signing algorithm detected",
+          "recommendation": "Use RS256 instead of HS256"
+        }
+      ],
+      "approved": false,
+      "timestamp": "2024-12-04T10:30:00Z"
+    }
+  ]
+}
+```
+
+```json
+{
+  "stage": "testing",
+  "artifacts": [
+    {
+      "type": "test_results",
+      "tests_run": 47,
+      "tests_passed": 47,
+      "coverage": 94.5,
+      "test_files": [
+        "tests/auth/test_jwt.py",
+        "tests/auth/test_middleware.py"
+      ],
+      "timestamp": "2024-12-04T10:45:00Z"
+    }
+  ]
+}
+```
+
+## Conversation History
+
+Track agent interactions:
+
+```json
+{
+  "stage": "implementation",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Implement JWT authentication with refresh tokens"
+    },
+    {
+      "role": "assistant",
+      "content": "I'll implement JWT auth with the following approach:\n1. Token generation with RS256\n2. Refresh token rotation\n3. Middleware for validation"
+    },
+    {
+      "role": "assistant",
+      "content": "Implementation complete. Created 2 files with 247 lines."
+    }
+  ]
+}
+```
+
+## Pipeline Status
+
+Track overall pipeline progress:
+
+| Status | Description |
+|--------|-------------|
+| `in_progress` | Currently executing |
+| `review` | Needs manual review (e.g., failed tests) |
+| `testing` | In testing stage |
+| `done` | Successfully completed |
+| `failed` | Fatal error occurred |
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Design atomic stages">
+    Each stage should have a single, clear responsibility:
+
+    **Good**: "Implement authentication", "Review code", "Run tests"
+
+    **Bad**: "Implement and test everything"
+  </Accordion>
+
+  <Accordion title="Include rollback stages">
+    Add stages for handling failures:
+
+    ```python
+    stages=[
+        {"role": "CODER", "agent": "CURSOR"},
+        {"role": "REVIEWER", "agent": "CLAUDE"},
+        {"role": "ROLLBACK", "agent": "AIDER", "condition": "if_review_fails"}
+    ]
+    ```
+  </Accordion>
+
+  <Accordion title="Preserve artifacts">
+    Store all artifacts for debugging and auditing:
+
+    ```python
+    # Save artifacts to Supabase
+    await save_artifacts(
+        sequence_id=sequence.id,
+        stage="implementation",
+        artifacts=stage_artifacts
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor pipeline health">
+    Track success rates and common failure points:
+
+    ```python
+    # Analytics
+    pipelines = await list_agent_sequences()
+    success_rate = len([p for p in pipelines if p.status == "done"]) / len(pipelines)
+    print(f"Pipeline success rate: {success_rate:.1%}")
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Integration with Orchestrator
+
+Use pipelines within orchestrated workflows:
+
+```python
+# Orchestrator creates pipeline for complex feature
+pipeline = await create_agent_sequence({
+    "name": feature_name,
+    "description": feature_description
+})
+
+# Monitor pipeline progress
+while pipeline.status == "in_progress":
+    await asyncio.sleep(5)
+    pipeline = await get_agent_sequence(pipeline.id)
+
+# Handle completion
+if pipeline.status == "done":
+    logger.info(f"Feature {feature_name} complete!")
+else:
+    logger.warning(f"Feature needs review: {pipeline.status}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Agent Orchestration"
+    icon="diagram-project"
+    href="/guides/agent-orchestration"
+  >
+    Coordinate multiple agents
+  </Card>
+  <Card
+    title="Agent Sequences API"
+    icon="code"
+    href="/api-reference/GET/agent-sequences"
+  >
+    Full API documentation
+  </Card>
+  <Card
+    title="Agent Workflows"
+    icon="robot"
+    href="/api-reference/POST/agent-workflows"
+  >
+    Create custom agents
+  </Card>
+  <Card
+    title="Memory Management"
+    icon="brain"
+    href="/guides/memory-management"
+  >
+    Store pipeline learnings
+  </Card>
+</CardGroup>

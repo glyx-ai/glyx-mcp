@@ -269,10 +269,12 @@ curl https://glyx-mcp.fly.dev/api/metrics
 
 ### Documentation
 
+- 📚 [**API Documentation**](https://glyx-mcp-docs.mintlify.app) - Interactive API docs with Mintlify
 - 📖 [PRODUCTION_READY.md](PRODUCTION_READY.md) - Start here for deployment
 - 🚀 [QUICKSTART.md](QUICKSTART.md) - Quick start guide
 - 📚 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Complete deployment guide
 - 📊 [DEPLOYMENT_SUMMARY.md](DEPLOYMENT_SUMMARY.md) - Full overview
+- 🔧 [docs/MINTLIFY_SETUP.md](docs/MINTLIFY_SETUP.md) - Mintlify documentation setup
 
 ### What's Included
 
