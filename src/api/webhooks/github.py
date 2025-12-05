@@ -34,7 +34,7 @@ async def create_activity(
     metadata: dict | None = None,
 ) -> None:
     """Create an activity record in Supabase."""
-    supabase_client.table("activities").insert(
+    supabase_client.table("events").insert(
         {
             "type": event_type,
             "actor": actor,

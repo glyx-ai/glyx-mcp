@@ -132,8 +132,8 @@ logger.info("Initializing MCP tools...")
 
 # Auto-discover and register agents from JSON configs
 # Agents are now in the SDK package
-from pathlib import Path as PathLibPath
-import glyx_python_sdk
+from pathlib import Path as PathLibPath  # noqa: E402
+import glyx_python_sdk  # noqa: E402
 
 # Get agents directory from SDK package location
 _sdk_path = PathLibPath(glyx_python_sdk.__file__).parent.parent
@@ -545,7 +545,12 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
             prompt = build_task_prompt(body.task)
             logger.info(f"[STREAM] Executing task {body.task.id}: {body.task.title}")
 
-            yield f"data: {json.dumps({'type': 'progress', 'message': '🚀 Starting orchestrator...', 'timestamp': datetime.now().isoformat()})}\n\n"
+            event_data = {
+                "type": "progress",
+                "message": "🚀 Starting orchestrator...",
+                "timestamp": datetime.now().isoformat(),
+            }
+            yield f"data: {json.dumps(event_data)}\n\n"
 
             orchestrator = GlyxOrchestrator(
                 agent_name="TaskOrchestrator",
@@ -560,22 +565,27 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
                 match item:
                     case ToolCallItem() as item:
                         await publish("tool_call", f"Tool: {item.raw_item.name}", {"tool_name": item.raw_item.name})
-                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': item.raw_item.name, 'timestamp': timestamp})}\n\n"
+                        event_data = {"type": "tool_call", "tool": item.raw_item.name, "timestamp": timestamp}
+                        yield f"data: {json.dumps(event_data)}\n\n"
 
                     case ToolCallOutputItem() as item:
-                        yield f"data: {json.dumps({'type': 'tool_output', 'output': str(item.output)[:500], 'timestamp': timestamp})}\n\n"
+                        event_data = {"type": "tool_output", "output": str(item.output)[:500], "timestamp": timestamp}
+                        yield f"data: {json.dumps(event_data)}\n\n"
 
                     case MessageOutputItem() as item:
                         text = ItemHelpers.text_message_output(item)
                         await publish("message", text)
-                        yield f"data: {json.dumps({'type': 'message', 'content': text, 'timestamp': timestamp})}\n\n"
+                        event_data = {"type": "message", "content": text, "timestamp": timestamp}
+                        yield f"data: {json.dumps(event_data)}\n\n"
 
                     case ReasoningItem() as item:
                         await publish("thinking", str(item.raw_item)[:500])
-                        yield f"data: {json.dumps({'type': 'thinking', 'content': str(item.raw_item), 'timestamp': timestamp})}\n\n"
+                        event_data = {"type": "thinking", "content": str(item.raw_item), "timestamp": timestamp}
+                        yield f"data: {json.dumps(event_data)}\n\n"
 
             await publish("complete", "Task completed")
-            yield f"data: {json.dumps({'type': 'complete', 'output': 'Task completed', 'timestamp': datetime.now().isoformat()})}\n\n"
+            event_data = {"type": "complete", "output": "Task completed", "timestamp": datetime.now().isoformat()}
+            yield f"data: {json.dumps(event_data)}\n\n"
 
             await orchestrator.cleanup()
 
@@ -858,7 +868,8 @@ async def api_delete_organization(org_id: str) -> dict[str, str]:
 
 
 # Tasks API
-SMART_TASK_SYSTEM_PROMPT = """You are a task creation assistant. Given selected text from a webpage, create a clear and actionable task.
+SMART_TASK_SYSTEM_PROMPT = """You are a task creation assistant. Given selected text from a webpage,
+create a clear and actionable task.
 
 Return a JSON object with:
 - title: A concise task title (max 80 chars)
@@ -1170,7 +1181,8 @@ async def api_infer_memory(body: MemoryInferRequest) -> MemoryInferResponse:
         if existing_memories:
             existing_context = "\n".join(f"- {m.get('memory', '')}" for m in existing_memories[:5])
 
-    system_prompt = """You are a knowledge extraction assistant. Analyze the provided page content and suggest 2-4 specific, actionable memories worth saving.
+    system_prompt = """You are a knowledge extraction assistant. Analyze the provided page content and
+suggest 2-4 specific, actionable memories worth saving.
 
 Focus on:
 - Technical patterns, APIs, or code examples
@@ -1180,7 +1192,8 @@ Focus on:
 
 For each suggestion:
 1. Extract the core information (be concise, 1-2 sentences)
-2. Assign a category: architecture, integrations, code_style_guidelines, project_id, observability, product, key_concept, or tasks
+2. Assign a category: architecture, integrations, code_style_guidelines,
+   project_id, observability, product, key_concept, or tasks
 3. Explain why this is worth remembering
 
 Respond in JSON format:
@@ -1334,7 +1347,7 @@ async def api_list_github_repositories() -> list[dict[str, Any]]:
     List unique GitHub repositories from activity history.
 
     Returns repositories that have had webhook events (pushes, PRs, issues, etc.)
-    stored in the activities table. Repositories are identified by org_id in the
+    stored in the events table. Repositories are identified by org_id in the
     format "owner/repo".
 
     **Returns:** Array of repository objects with:
@@ -1357,10 +1370,9 @@ async def api_list_github_repositories() -> list[dict[str, Any]]:
     """
     try:
         supabase = get_supabase()
-        # Query activities table for unique org_ids that look like GitHub repos (contain "/")
-        # Note: The table was renamed to "events" in migration but code still uses "activities"
+        # Query events table for unique org_ids that look like GitHub repos (contain "/")
         response = (
-            supabase.table("activities")
+            supabase.table("events")
             .select("org_id, org_name, created_at")
             .not_.is_("org_id", "null")
             .order("created_at", desc=True)

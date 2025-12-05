@@ -157,18 +157,20 @@ async def handle_session_task(
 
     task_id = task.task_id
 
-    supabase.table("tasks").insert({
-        "id": task_id,
-        "title": task.title,
-        "description": task.description,
-        "status": task.status,
-        "created_by": task.created_by,
-        "linear_session_id": session_id,
-        "linear_workspace_id": workspace_id,
-        "organization_id": org_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).execute()
+    supabase.table("tasks").insert(
+        {
+            "id": task_id,
+            "title": task.title,
+            "description": task.description,
+            "status": task.status,
+            "created_by": task.created_by,
+            "linear_session_id": session_id,
+            "linear_workspace_id": workspace_id,
+            "organization_id": org_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).execute()
 
     await broadcast_event("linear.task.created", {"task_id": task_id, "session_id": session_id})
 
@@ -228,13 +230,17 @@ async def _orchestrate_and_stream(
 
 def _update_task_status(supabase: Any, task_id: str, status: str) -> None:
     """Update task status in Supabase."""
-    supabase.table("tasks").update({
-        "status": status,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", task_id).execute()
+    supabase.table("tasks").update(
+        {
+            "status": status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+    ).eq("id", task_id).execute()
 
 
 def _fetch_task_activities(supabase: Any, task_id: str, organization_id: str) -> list[dict[str, Any]]:
     """Fetch activities for a task from Supabase."""
-    response = supabase.table("activities").select("*").eq("org_id", organization_id).order("created_at", desc=False).execute()
+    response = (
+        supabase.table("events").select("*").eq("org_id", organization_id).order("created_at", desc=False).execute()
+    )
     return response.data or []

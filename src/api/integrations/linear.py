@@ -241,6 +241,6 @@ def _update_task_status(supabase: Any, task_id: str, status: str) -> None:
 def _fetch_task_activities(supabase: Any, task_id: str, organization_id: str) -> list[dict[str, Any]]:
     """Fetch activities for a task from Supabase."""
     response = (
-        supabase.table("activities").select("*").eq("org_id", organization_id).order("created_at", desc=False).execute()
+        supabase.table("events").select("*").eq("org_id", organization_id).order("created_at", desc=False).execute()
     )
     return response.data or []
