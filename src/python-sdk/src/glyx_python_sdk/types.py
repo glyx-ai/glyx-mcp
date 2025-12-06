@@ -18,8 +18,8 @@ class StreamCursorRequest(BaseModel):
     """Request model for streaming cursor agent."""
 
     task: TaskData
-    organization_id: str
-    organization_name: str | None = None
+    orchestration_id: str
+    orchestration_name: str | None = None
 
 
 class AgentResponse(BaseModel):
@@ -32,8 +32,8 @@ class AgentResponse(BaseModel):
     status: str
 
 
-class OrganizationCreate(BaseModel):
-    """Request model for creating an organization."""
+class OrchestrationCreate(BaseModel):
+    """Request model for creating an orchestration."""
 
     name: str
     description: str = ""
@@ -41,8 +41,8 @@ class OrganizationCreate(BaseModel):
     config: dict = Field(default_factory=dict)
 
 
-class OrganizationResponse(BaseModel):
-    """Response model for organization."""
+class OrchestrationResponse(BaseModel):
+    """Response model for orchestration."""
 
     id: str
     name: str
@@ -118,7 +118,7 @@ class TaskResponse(BaseModel):
     title: str
     description: str
     status: str
-    organization_id: str | None = None
+    orchestration_id: str | None = None
     created_at: str
 
 

@@ -8,7 +8,8 @@ from agents import Agent, Runner, SQLiteSession, function_tool
 from agents.extensions.models.litellm_model import LitellmModel
 from dbos import DBOS
 
-from glyx_python_sdk.agent import AgentKey, AgentResult, ComposableAgent
+from glyx_python_sdk.composable_agents import ComposableAgent
+from glyx_python_sdk.agent_types import AgentKey, AgentResult
 from glyx_python_sdk.memory import save_memory as save_memory_fn
 from glyx_python_sdk.memory import search_memory as search_memory_fn
 from glyx_python_sdk.models.stream_items import stream_item_from_agent
@@ -18,23 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 # Define tools for each ComposableAgent - wrapped with @DBOS.step() for checkpointing
-@function_tool
-@DBOS.step()
-async def use_aider_agent(prompt: str, files: str, model: str = "gpt-5") -> str:
-    """Execute Aider for AI-powered code editing and refactoring.
-
-    Args:
-        prompt: The task description for Aider
-        files: Comma-separated list of files to edit
-        model: Model to use (default: gpt-5)
-
-    Returns:
-        Result from Aider execution
-    """
-    logger.info(f"Executing Aider agent: prompt={prompt[:100]}, files={files}, model={model}")
-    agent = ComposableAgent.from_key(AgentKey.AIDER)
-    result: AgentResult = await agent.execute({"prompt": prompt, "files": files, "model": model}, timeout=300)
-    return result.output
 
 
 @function_tool
@@ -191,7 +175,6 @@ class GlyxOrchestrator:
             model=litellm_model,
             instructions="You are an AI orchestrator coordinating specialized agents.",
             tools=[
-                use_aider_agent,
                 use_grok_agent,
                 use_claude_agent,
                 use_codex_agent,

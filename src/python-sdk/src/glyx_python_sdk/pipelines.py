@@ -3,13 +3,14 @@
 import logging
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Annotated, Literal
-from uuid import UUID, uuid4
+from typing import Annotated
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 from supabase import Client, create_client
 
-from glyx_python_sdk.agent import AgentKey, ComposableAgent
+from glyx_python_sdk.composable_agents import ComposableAgent
+from glyx_python_sdk.agent_types import AgentKey
 from glyx_python_sdk.settings import settings
 
 logger = logging.getLogger(__name__)

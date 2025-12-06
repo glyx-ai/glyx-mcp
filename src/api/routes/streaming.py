@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from agents.items import ItemHelpers, MessageOutputItem, ReasoningItem, ToolCallItem, ToolCallOutputItem
 from glyx_python_sdk import GlyxOrchestrator, build_task_prompt
-from glyx_python_sdk.agent import create_event
+from glyx_python_sdk.composable_agents import create_event
 from glyx_python_sdk.types import StreamCursorRequest
 from glyx_python_sdk.websocket_manager import manager as ws_manager
 
@@ -43,8 +43,7 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
 
     **Request Body:**
     - `task`: Task object with id, title, description
-    - `organization_id`: Organization UUID
-    - `organization_name`: Organization name (optional)
+    - `orchestration_id`: Orchestration UUID
 
     **Example Event:**
     ```
@@ -55,7 +54,7 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
     ```javascript
     const eventSource = new EventSource('/stream/cursor', {
         method: 'POST',
-        body: JSON.stringify({task: {...}, organization_id: '...'})
+        body: JSON.stringify({task: {...}, orchestration_id: '...'})
     });
     eventSource.onmessage = (e) => {
         const data = JSON.parse(e.data);
@@ -67,10 +66,9 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
     async def publish(event_type: str, content: str, metadata: dict | None = None):
         """Publish event to Supabase."""
         await create_event(
-            organization_id=body.organization_id,
+            orchestration_id=body.orchestration_id,
             type=event_type,
             content=content,
-            org_name=body.organization_name,
             metadata=metadata,
         )
 
@@ -79,7 +77,12 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
             prompt = build_task_prompt(body.task)
             logger.info(f"[STREAM] Executing task {body.task.id}: {body.task.title}")
 
-            yield f"data: {json.dumps({'type': 'progress', 'message': '🚀 Starting orchestrator...', 'timestamp': datetime.now().isoformat()})}\n\n"
+            progress_data = {
+                "type": "progress",
+                "message": "🚀 Starting orchestrator...",
+                "timestamp": datetime.now().isoformat(),
+            }
+            yield f"data: {json.dumps(progress_data)}\n\n"
 
             orchestrator = GlyxOrchestrator(
                 agent_name="TaskOrchestrator",
@@ -93,23 +96,29 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
 
                 match item:
                     case ToolCallItem() as item:
-                        await publish("tool_call", f"Tool: {item.raw_item.name}", {"tool_name": item.raw_item.name})
-                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': item.raw_item.name, 'timestamp': timestamp})}\n\n"
+                        tool_name = item.raw_item.name
+                        await publish("tool_call", f"Tool: {tool_name}", {"tool_name": tool_name})
+                        tool_data = {"type": "tool_call", "tool": tool_name, "timestamp": timestamp}
+                        yield f"data: {json.dumps(tool_data)}\n\n"
 
                     case ToolCallOutputItem() as item:
-                        yield f"data: {json.dumps({'type': 'tool_output', 'output': str(item.output)[:500], 'timestamp': timestamp})}\n\n"
+                        output_data = {"type": "tool_output", "output": str(item.output)[:500], "timestamp": timestamp}
+                        yield f"data: {json.dumps(output_data)}\n\n"
 
                     case MessageOutputItem() as item:
                         text = ItemHelpers.text_message_output(item)
                         await publish("message", text)
-                        yield f"data: {json.dumps({'type': 'message', 'content': text, 'timestamp': timestamp})}\n\n"
+                        msg_data = {"type": "message", "content": text, "timestamp": timestamp}
+                        yield f"data: {json.dumps(msg_data)}\n\n"
 
                     case ReasoningItem() as item:
                         await publish("thinking", str(item.raw_item)[:500])
-                        yield f"data: {json.dumps({'type': 'thinking', 'content': str(item.raw_item), 'timestamp': timestamp})}\n\n"
+                        think_data = {"type": "thinking", "content": str(item.raw_item), "timestamp": timestamp}
+                        yield f"data: {json.dumps(think_data)}\n\n"
 
             await publish("complete", "Task completed")
-            yield f"data: {json.dumps({'type': 'complete', 'output': 'Task completed', 'timestamp': datetime.now().isoformat()})}\n\n"
+            complete_data = {"type": "complete", "output": "Task completed", "timestamp": datetime.now().isoformat()}
+            yield f"data: {json.dumps(complete_data)}\n\n"
 
             await orchestrator.cleanup()
 

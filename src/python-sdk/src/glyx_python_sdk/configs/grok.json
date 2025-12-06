@@ -1,5 +1,5 @@
 {
-  "kimi_k2": {
+  "grok": {
     "command": "opencode",
     "args": {
       "subcmd": {
@@ -11,16 +11,16 @@
       "model": {
         "flag": "--model",
         "type": "string",
-        "default": "openrouter/moonshotai/kimi-k2",
-        "description": "Use Kimi K2 model via OpenRouter"
+        "default": "openrouter/x-ai/grok-4.1",
+        "description": "Use Grok 4.1 model via OpenRouter"
       },
       "prompt": {
         "flag": "",
         "type": "string",
-        "default": null,
-        "description": "Message to send to Kimi K2"
+        "default": "",
+        "description": "Message to send to Grok via OpenCode"
       }
     },
-    "description": "OpenCode CLI configured with Kimi K2 model"
+    "description": "OpenCode CLI configured with Grok-4.1 model (xAI provider)"
   }
 }

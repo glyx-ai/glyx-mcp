@@ -4,14 +4,12 @@ import asyncio
 import json
 import logging
 import os
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import datetime
+from importlib.resources import files
 from pathlib import Path
 from time import time
-from typing import Any, AsyncGenerator, Literal
+from typing import Any, AsyncGenerator
 
-from pydantic import BaseModel, Field, field_validator
 from supabase import create_client
 
 from glyx_python_sdk.models.cursor import (
@@ -22,41 +20,31 @@ from glyx_python_sdk.models.cursor import (
     CursorToolCallEvent,
     parse_cursor_event,
 )
-from glyx_python_sdk.models.response import (
-    BaseResponseEvent,
-    parse_response_event,
-    summarize_tool_activity,
-)
+from glyx_python_sdk.models.response import BaseResponseEvent
 from glyx_python_sdk.settings import settings
+from glyx_python_sdk.agent_types import (
+    AgentConfig,
+    AgentKey,
+    AgentResult,
+    ArgSpec,
+    Event,
+)
+from glyx_python_sdk.exceptions import AgentConfigError
 from glyx_python_sdk.websocket_manager import broadcast_event
 
 logger = logging.getLogger(__name__)
 
 
-class Event(BaseModel):
-    """Generic event for the activity feed."""
-
-    organization_id: str
-    org_name: str | None = None
-    type: str
-    actor: str = "system"
-    content: str
-    metadata: dict[str, Any] | None = None
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
-
-
 async def create_event(
-    organization_id: str,
+    orchestration_id: str,
     type: str,
     content: str,
-    org_name: str | None = None,
     actor: str = "system",
     metadata: dict[str, Any] | None = None,
 ) -> Event:
     """Create an event record in Supabase."""
     event = Event(
-        organization_id=organization_id,
-        org_name=org_name,
+        orchestration_id=orchestration_id,
         type=type,
         actor=actor,
         content=content,
@@ -66,123 +54,6 @@ async def create_event(
     client.table("events").insert(event.model_dump()).execute()
     logger.info(f"[EVENT] Created: {event.type} - {event.content[:50]}")
     return event
-
-
-# Custom Exceptions
-class AgentError(Exception):
-    """Base exception for agent errors."""
-
-    pass
-
-
-class AgentTimeoutError(AgentError):
-    """Raised when agent execution times out."""
-
-    pass
-
-
-class AgentExecutionError(AgentError):
-    """Raised when agent execution fails."""
-
-    pass
-
-
-class AgentConfigError(AgentError):
-    """Raised when agent configuration is invalid."""
-
-    pass
-
-
-class AgentKey(str, Enum):
-    CURSOR = "cursor"
-    GEMINI = "gemini"
-    CLAUDE = "claude"
-    AIDER = "aider"
-    CODEX = "codex"
-    OPENCODE = "opencode"
-    GROK = "grok"
-    DEEPSEEK_R1 = "deepseek_r1"
-    KIMI_K2 = "kimi_k2"
-    SHOT_SCRAPER = "shot_scraper"
-
-
-@dataclass
-class AgentResult:
-    """Structured result from agent execution."""
-
-    stdout: str
-    stderr: str
-    exit_code: int
-    timed_out: bool = False
-    execution_time: float = 0.0
-    command: list[str] | None = None
-
-    @property
-    def success(self) -> bool:
-        """Check if execution was successful."""
-        return self.exit_code == 0 and not self.timed_out
-
-    @property
-    def output(self) -> str:
-        """Get combined output (for backward compatibility)."""
-        result = self.stdout
-        if self.stderr:
-            result += f"\nSTDERR: {self.stderr}"
-        return result
-
-
-class ArgSpec(BaseModel):
-    """Specification for a single command-line argument."""
-
-    flag: str = ""  # Empty string for positional args
-    type: Literal["string", "bool", "int"] = "string"
-    required: bool = False
-    default: str | int | bool | None = None
-    description: str = ""
-
-    @field_validator("type")
-    @classmethod
-    def validate_type(cls, v: str) -> str:
-        """Ensure type is valid."""
-        if v not in ["string", "bool", "int"]:
-            raise ValueError(f"Invalid arg type: {v}")
-        return v
-
-
-class AgentConfig(BaseModel):
-    """Agent configuration from JSON - validated with Pydantic."""
-
-    agent_key: str
-    command: str = Field(..., min_length=1)  # Must be non-empty
-    args: dict[str, ArgSpec]
-    description: str | None = None
-    version: str | None = None
-    capabilities: list[str] = Field(default_factory=list)
-
-    @classmethod
-    def from_file(cls, file_path: str | Path) -> "AgentConfig":
-        """Load and validate config from JSON file."""
-        with open(file_path) as f:
-            data = json.load(f)
-
-        agent_key = next(iter(data.keys()))
-        agent_data = data[agent_key]
-        agent_data["agent_key"] = agent_key
-
-        return cls(**agent_data)
-
-
-class TaskConfig(BaseModel):
-    """Task configuration for agent execution - validated with Pydantic."""
-
-    prompt: str = Field(..., min_length=1)  # Always required
-    model: str = "gpt-5"  # Default model
-    files: str | None = None
-    read_files: str | None = None
-    working_dir: str | None = None
-    max_turns: int | None = None
-
-    model_config = {"extra": "allow"}  # Allow additional fields for extensibility
 
 
 class ComposableAgent:
@@ -210,10 +81,8 @@ class ComposableAgent:
     @classmethod
     def from_key(cls, key: AgentKey) -> "ComposableAgent":
         """Create agent from a key."""
-        # Get agents directory - now in same package root
-        config_dir = Path(__file__).parent.parent / "agents"
-        file_path = config_dir / f"{key.value}.json"
-        return cls.from_file(file_path)
+        config_path = files("glyx_python_sdk.configs") / f"{key.value}.json"
+        return cls.from_file(config_path)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ComposableAgent":
@@ -225,40 +94,89 @@ class ComposableAgent:
         Returns:
             ComposableAgent instance.
         """
-        args = {k: ArgSpec(**v) for k, v in data["args"].items()}
+        # Convert dict-style args to list-style
+        raw_args = data.get("args", {})
+        args = (
+            [ArgSpec(name=k, **v) for k, v in raw_args.items()]
+            if isinstance(raw_args, dict)
+            else [ArgSpec(**a) for a in raw_args]
+        )
         config = AgentConfig(
             agent_key=data["agent_key"],
             command=data["command"],
             args=args,
-            description=data.get("description"),
-            version=data.get("version"),
+            description=data.get("description", ""),
+            version=data.get("version", ""),
             capabilities=data.get("capabilities", []),
         )
         return cls(config)
+
+    def _build_cli_args(self, task_config: dict[str, Any]) -> list[str]:
+        """Build CLI arguments from task config using ArgSpec definitions."""
+        args: list[str] = []
+
+        # Separate positional and flag-based args
+        positional_args = sorted(
+            [a for a in self.config.args if a.positional],
+            key=lambda a: a.position,
+        )
+        flag_args = [a for a in self.config.args if not a.positional]
+
+        # Process positional args first (in order)
+        for arg_spec in positional_args:
+            value = task_config.get(arg_spec.name)
+            value = value if value is not None else (os.environ.get(arg_spec.env_var) if arg_spec.env_var else None)
+            value = value if value is not None else (arg_spec.default if arg_spec.default else None)
+            if value is not None:
+                if arg_spec.choices and str(value) not in arg_spec.choices:
+                    raise AgentConfigError(
+                        f"Invalid value '{value}' for {arg_spec.name}. Must be one of: {arg_spec.choices}"
+                    )
+                args.append(str(value))
+
+        # Process flag-based args
+        for arg_spec in flag_args:
+            value = task_config.get(arg_spec.name)
+            value = value if value is not None else (os.environ.get(arg_spec.env_var) if arg_spec.env_var else None)
+            value = value if value is not None else (arg_spec.default if arg_spec.default else None)
+
+            if value is None:
+                continue
+
+            # Validate choices
+            if arg_spec.choices:
+                values_to_check = value if isinstance(value, list) else [value]
+                for v in values_to_check:
+                    if str(v) not in arg_spec.choices:
+                        raise AgentConfigError(
+                            f"Invalid value '{v}' for {arg_spec.name}. Must be one of: {arg_spec.choices}"
+                        )
+
+            flag = arg_spec.flag
+
+            if arg_spec.type == "bool":
+                if value:
+                    args.append(flag)
+            elif arg_spec.variadic and isinstance(value, list):
+                for v in value:
+                    if flag:
+                        args.extend([flag, str(v)])
+                    else:
+                        args.append(str(v))
+            elif flag:
+                args.extend([flag, str(value)])
+            else:
+                # Empty flag means positional arg
+                args.append(str(value))
+
+        return args
 
     async def execute(self, task_config: dict[str, Any], timeout: int = 30, ctx=None) -> AgentResult:
         """Parse args and execute command, returning structured result."""
         start_time = time()
         model = task_config.get("model", "gpt-5")
         logger.info(f"[AGENT EXECUTE] Starting execution for {self.config.agent_key} (model={model})")
-        cmd = [self.config.command]
-
-        for key, arg_spec in self.config.args.items():
-            value = task_config.get(key, arg_spec.default)
-            if value is not None:
-                flag = arg_spec.flag
-                if not flag:
-                    if arg_spec.type == "bool":
-                        if value:
-                            cmd.append(str(value))
-                    else:
-                        cmd.append(str(value))
-                else:
-                    if arg_spec.type == "bool":
-                        if value:
-                            cmd.append(flag)
-                    else:
-                        cmd.extend([flag, str(value)])
+        cmd = [self.config.command] + self._build_cli_args(task_config)
 
         logger.info(f"[AGENT CMD] Executing: {' '.join(cmd)} (model={model})")
 
@@ -268,7 +186,7 @@ class ComposableAgent:
         )
 
         subprocess_start = time()
-        logger.info(f"[AGENT SUBPROCESS] Creating subprocess...")
+        logger.info("[AGENT SUBPROCESS] Creating subprocess...")
         process = await asyncio.create_subprocess_exec(
             *cmd, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
@@ -312,7 +230,8 @@ class ComposableAgent:
         )
 
         logger.info(
-            f"[AGENT RESULT] Completed in {execution_time:.2f}s (model={model}, exit={result.exit_code}, stdout={len(result.stdout)} bytes, stderr={len(result.stderr)} bytes)"
+            f"[AGENT RESULT] Completed in {execution_time:.2f}s (model={model}, exit={result.exit_code}, "
+            f"stdout={len(result.stdout)} bytes, stderr={len(result.stderr)} bytes)"
         )
 
         await broadcast_event(
@@ -392,23 +311,7 @@ class ComposableAgent:
         model = task_config.get("model", "gpt-5")
         logger.info(f"[AGENT STREAM] Starting streaming execution for {self.config.agent_key} (model={model})")
 
-        cmd = [self.config.command]
-        for key, arg_spec in self.config.args.items():
-            value = task_config.get(key, arg_spec.default)
-            if value is not None:
-                flag = arg_spec.flag
-                if not flag:
-                    if arg_spec.type == "bool":
-                        if value:
-                            cmd.append(str(value))
-                    else:
-                        cmd.append(str(value))
-                else:
-                    if arg_spec.type == "bool":
-                        if value:
-                            cmd.append(flag)
-                    else:
-                        cmd.extend([flag, str(value)])
+        cmd = [self.config.command] + self._build_cli_args(task_config)
 
         logger.info(f"[AGENT STREAM CMD] {' '.join(cmd)} (model={model})")
 
@@ -427,7 +330,7 @@ class ComposableAgent:
         subprocess_env = None
         if github_token:
             subprocess_env = {**os.environ, "GITHUB_TOKEN": github_token, "GH_TOKEN": github_token}
-            logger.info(f"[AGENT STREAM] GitHub token injected for PR creation")
+            logger.info("[AGENT STREAM] GitHub token injected for PR creation")
 
         logger.info(f"[AGENT STREAM] Spawning subprocess: {self.config.command}")
         process = await asyncio.create_subprocess_exec(
@@ -455,7 +358,7 @@ class ComposableAgent:
                                 {"type": "agent_event", "event": parsed_event, "timestamp": datetime.now().isoformat()}
                             )
                             if parsed_event.type == "thinking":
-                                logger.debug(f"[AGENT STREAM EVENT] thinking")
+                                logger.debug("[AGENT STREAM EVENT] thinking")
                             else:
                                 logger.info(f"[AGENT STREAM EVENT] {parsed_event.type}")
                         except json.JSONDecodeError:
@@ -480,11 +383,9 @@ class ComposableAgent:
             await process.wait()
             process_done.set()
 
-        tasks = [
-            asyncio.create_task(stream_stdout()),
-            asyncio.create_task(stream_stderr()),
-            asyncio.create_task(wait_for_process()),
-        ]
+        asyncio.create_task(stream_stdout())
+        asyncio.create_task(stream_stderr())
+        asyncio.create_task(wait_for_process())
 
         thinking_buffer: list[str] = []
         thinking_start: float | None = None

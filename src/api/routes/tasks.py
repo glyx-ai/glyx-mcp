@@ -12,14 +12,15 @@ from openai import AsyncOpenAI
 from supabase import create_client
 
 from glyx_python_sdk import settings
-from glyx_python_sdk.agent import create_event
+from glyx_python_sdk.composable_agents import create_event
 from glyx_python_sdk.types import SmartTaskRequest, TaskResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
-SMART_TASK_SYSTEM_PROMPT = """You are a task creation assistant. Given selected text from a webpage, create a clear and actionable task.
+SMART_TASK_SYSTEM_PROMPT = """You are a task creation assistant. \
+Given selected text from a webpage, create a clear and actionable task.
 
 Return a JSON object with:
 - title: A concise task title (max 80 chars)
@@ -56,17 +57,13 @@ async def api_list_tasks() -> list[TaskResponse]:
 async def api_create_task(body: dict) -> TaskResponse:
     """Create a new task in Supabase."""
     client = create_client(settings.supabase_url, settings.supabase_anon_key)
-    organization_id = body["organization_id"]
+    orchestration_id = body["orchestration_id"]
     title = body["title"]
-
-    # Fetch organization name
-    org_response = client.table("organizations").select("name").eq("id", organization_id).single().execute()
-    org_name = org_response.data["name"]
 
     insert_data = {
         "title": title,
         "description": body["description"],
-        "organization_id": organization_id,
+        "orchestration_id": orchestration_id,
         "status": "in_progress",
         "assigned_at": datetime.now().isoformat(),
     }
@@ -76,8 +73,7 @@ async def api_create_task(body: dict) -> TaskResponse:
 
     # Emit task creation event
     await create_event(
-        organization_id=organization_id,
-        org_name=org_name,
+        orchestration_id=orchestration_id,
         type="deployment",
         content=f"Task created: {title}",
         actor="system",

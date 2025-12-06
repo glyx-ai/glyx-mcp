@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 from agents.items import ItemHelpers, MessageOutputItem
 
 from glyx_python_sdk.orchestrator import GlyxOrchestrator
-from glyx_python_sdk.settings import settings
 from glyx_python_sdk.websocket_manager import broadcast_event
 from glyx_python_sdk.models.task import Task
 

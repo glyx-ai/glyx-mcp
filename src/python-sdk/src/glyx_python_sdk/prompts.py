@@ -69,7 +69,11 @@ EXAMPLES OF GOOD MEMORIES:
 Example 1 - Architecture:
 ```
 save_memory(
-    content="Project uses FastMCP framework with OpenAI Agents SDK for orchestration. Main orchestrator in src/python-sdk/src/glyx_python_sdk/orchestrator.py uses Runner.run_streamed() for parallel agent execution. Composable agents defined via JSON configs in src/python-sdk/agents/.",
+    content=(
+        "Project uses FastMCP framework with OpenAI Agents SDK for orchestration. "
+        "Main orchestrator in orchestrator.py uses Runner.run_streamed(). "
+        "Composable agents defined via JSON configs in agents/."
+    ),
     agent_id="orchestrator",
     run_id="abc123",
     category="architecture"
@@ -79,7 +83,11 @@ save_memory(
 Example 2 - Integration Pattern:
 ```
 save_memory(
-    content="Memory system uses Mem0 with enable_graph=True for all save operations to build entity relationships. Custom categories configured for coding projects: architecture, integrations, code_style_guidelines, project_id, observability, product, key_concept.",
+    content=(
+        "Memory system uses Mem0 with enable_graph=True for all save operations. "
+        "Custom categories: architecture, integrations, code_style_guidelines, "
+        "project_id, observability, product, key_concept."
+    ),
     agent_id="orchestrator",
     run_id="abc123",
     category="integrations"
@@ -89,7 +97,10 @@ save_memory(
 Example 3 - Code Style:
 ```
 save_memory(
-    content="Project enforces strict mypy typing with Pydantic models for all config validation. All agent execution is async using asyncio. Line length: 120 chars. Testing uses pytest with markers: integration, e2e, slow.",
+    content=(
+        "Strict mypy typing with Pydantic models. Async execution via asyncio. "
+        "Line length: 120 chars. pytest with markers: integration, e2e, slow."
+    ),
     agent_id="orchestrator",
     run_id="abc123",
     category="code_style_guidelines"
@@ -115,7 +126,8 @@ def get_orchestrator_instructions(task_schema_str: str) -> str:
     Returns:
         Formatted instructions string
     """
-    return f"""You are a coding-focused AI orchestrator that coordinates specialized agents to accomplish software engineering tasks while maintaining deep project memory and task tracking.
+    return """You are a coding-focused AI orchestrator that coordinates specialized agents \
+to accomplish software engineering tasks while maintaining deep project memory and task tracking.
 
 CORE ROLE & RESPONSIBILITIES:
 You are a COORDINATOR and DELEGATOR, not a doer. Your job is to:

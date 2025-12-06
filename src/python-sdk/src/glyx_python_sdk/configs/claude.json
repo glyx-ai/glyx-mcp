@@ -8,7 +8,7 @@
         "required": true,
         "description": "The prompt to send to Claude",
         "type": "string",
-        "default": null
+        "default": ""
       },
       "model": {
         "flag": "--model",
@@ -22,14 +22,14 @@
         "required": false,
         "description": "Maximum number of turns",
         "type": "int",
-        "default": 30
+        "default": "30"
       },
       "working_dir": {
         "flag": "--add-dir",
         "required": false,
         "description": "Add working directory (can be supplied multiple times or as a comma-separated list)",
         "type": "string",
-        "default": null
+        "default": ""
       },
       "disallowed_tools": {
         "flag": "--disallowedTools",

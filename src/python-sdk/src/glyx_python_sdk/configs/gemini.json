@@ -8,7 +8,7 @@
         "required": true,
         "description": "The prompt to send to Gemini",
         "type": "string",
-        "default": null
+        "default": ""
       },
       "model": {
         "flag": "--model",
@@ -22,14 +22,14 @@
         "required": false,
         "description": "Add working directory (can be supplied multiple times or as a comma-separated list)",
         "type": "string",
-        "default": null
+        "default": ""
       },
       "sandbox": {
         "flag": "--sandbox",
         "required": false,
         "description": "Enable sandboxing",
         "type": "bool",
-        "default": false
+        "default": "false"
       }
     },
     "capabilities": [

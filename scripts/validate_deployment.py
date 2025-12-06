@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Validate deployment configuration and readiness."""
 
+import importlib.util
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
-try:
-    from pydantic_settings import BaseSettings
-except ImportError:
+if importlib.util.find_spec("pydantic_settings") is None:
     print("❌ pydantic-settings not installed. Run: uv pip install pydantic-settings")
     sys.exit(1)
 

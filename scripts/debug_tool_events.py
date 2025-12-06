@@ -4,14 +4,8 @@
 import asyncio
 import json
 import logging
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
 from glyx_python_sdk import AgentKey, ComposableAgent
 from glyx_python_sdk.models.cursor import (
-    BaseCursorEvent,
     CursorToolCallEvent,
     parse_cursor_event,
 )
@@ -66,7 +60,7 @@ async def main():
                 if isinstance(parsed, CursorToolCallEvent):
                     tool_name = parsed.get_tool_name()
                     preview = parsed.get_preview()
-                    print(f"\n>>> CURSOR TOOL CALL:")
+                    print("\n>>> CURSOR TOOL CALL:")
                     print(f"    Tool name: {tool_name!r}")
                     print(f"    Preview: {preview!r}")
                     print(f"    Subtype: {parsed.subtype}")

@@ -1,13 +1,20 @@
 """Glyx Python SDK - AI orchestration framework."""
 
-from glyx_python_sdk.agent import (
+from glyx_python_sdk.agent_types import (
     AgentConfig,
-    AgentError,
     AgentKey,
     AgentResult,
     ArgSpec,
-    ComposableAgent,
+    Event,
+    SubcommandSpec,
     TaskConfig,
+)
+from glyx_python_sdk.composable_agents import ComposableAgent
+from glyx_python_sdk.exceptions import (
+    AgentConfigError,
+    AgentError,
+    AgentExecutionError,
+    AgentTimeoutError,
 )
 from glyx_python_sdk.memory import save_memory, search_memory
 from glyx_python_sdk.models.cursor import (
@@ -47,7 +54,7 @@ from glyx_python_sdk.pipelines import (
     save_agent_sequence,
 )
 from glyx_python_sdk.prompts import build_task_prompt, get_orchestrator_instructions
-from glyx_python_sdk.registry import discover_and_register_agents, make_agent_wrapper
+from glyx_python_sdk.registry import discover_and_register_agents, make_agent_wrapper, register_agents
 from glyx_python_sdk.settings import Settings, settings
 from glyx_python_sdk.types import TaskData
 from glyx_python_sdk.workflows import (
@@ -81,8 +88,14 @@ __all__ = [
     "AgentKey",
     "AgentResult",
     "ArgSpec",
+    "SubcommandSpec",
     "TaskConfig",
+    "Event",
+    # Exceptions
     "AgentError",
+    "AgentTimeoutError",
+    "AgentExecutionError",
+    "AgentConfigError",
     # Orchestrator
     "GlyxOrchestrator",
     # Pipeline management
@@ -124,6 +137,7 @@ __all__ = [
     # Registry
     "discover_and_register_agents",
     "make_agent_wrapper",
+    "register_agents",
     # Settings
     "Settings",
     "settings",

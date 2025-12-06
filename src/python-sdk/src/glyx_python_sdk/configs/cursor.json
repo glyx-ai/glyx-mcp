@@ -38,14 +38,14 @@
         "required": true,
         "description": "Task instructions for the Cursor agent. Be specific about what code changes to make.",
         "type": "string",
-        "default": null
+        "default": ""
       },
       "print_mode": {
         "flag": "-p",
         "required": false,
         "description": "Enable non-interactive print mode for headless/CI automation. Required for programmatic usage.",
         "type": "bool",
-        "default": true
+        "default": "true"
       },
       "model": {
         "flag": "--model",
@@ -59,7 +59,7 @@
         "required": false,
         "description": "Allow direct file modifications without confirmation prompts. Use with caution.",
         "type": "bool",
-        "default": false
+        "default": "false"
       },
       "output_format": {
         "flag": "--output-format",
@@ -73,7 +73,7 @@
         "required": false,
         "description": "Cursor API key for authentication. Can also use CURSOR_API_KEY env var.",
         "type": "string",
-        "default": null
+        "default": ""
       }
     },
     "env_vars": {

@@ -6,7 +6,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from glyx_python_sdk.agent import AgentConfig, ArgSpec, ComposableAgent
+from glyx_python_sdk.composable_agents import ComposableAgent
+from glyx_python_sdk.agent_types import AgentConfig, ArgSpec
 
 # Type aliases
 UUIDStr = Annotated[str, Field(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")]
@@ -30,13 +31,13 @@ class AgentWorkflowConfig(BaseModel):
 
     def to_agent_config(self) -> AgentConfig:
         """Convert to AgentConfig for execution."""
-        args = {k: ArgSpec(**v) for k, v in self.args.items()}
+        args = [ArgSpec(name=k, **v) for k, v in self.args.items()]
         return AgentConfig(
             agent_key=self.agent_key,
             command=self.command,
             args=args,
-            description=self.description,
-            version=self.version,
+            description=self.description or "",
+            version=self.version or "",
             capabilities=self.capabilities,
         )
 
@@ -161,7 +162,7 @@ def save_workflow(workflow: AgentWorkflowConfig) -> AgentWorkflowConfig:
         "updated_at": workflow.updated_at.isoformat(),
     }
 
-    response = client.table("workflow_templates").upsert(data).execute()
+    client.table("workflow_templates").upsert(data).execute()
     return AgentWorkflowConfig(**workflow.model_dump())
 
 

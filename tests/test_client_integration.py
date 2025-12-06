@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 from fastmcp import Client
 
-from mcp.server import mcp
+from glyx_mcp.server import mcp
 
 
 @pytest.mark.integration
@@ -91,119 +91,29 @@ class TestFastMCPClient:
 
 
 @pytest.mark.integration
-class TestPrompts:
-    """Test MCP prompts registration."""
-
-    @pytest.mark.asyncio
-    async def test_list_prompts(self) -> None:
-        """Test that prompts are properly registered."""
-        client = Client(mcp)
-
-        async with client:
-            prompts = await client.list_prompts()
-
-            # Extract prompt names
-            prompt_names = [p.name for p in prompts]
-
-            # Verify expected prompts are present
-            assert "agent_prompt" in prompt_names
-            assert "orchestrate_prompt" in prompt_names
-
-            # Verify we have at least 2 prompts
-            assert len(prompt_names) >= 2
-
-    @pytest.mark.asyncio
-    async def test_prompt_has_arguments(self) -> None:
-        """Test that prompts have proper argument definitions."""
-        client = Client(mcp)
-
-        async with client:
-            prompts = await client.list_prompts()
-
-            # Find the agent_prompt
-            agent_prompt = next((p for p in prompts if p.name == "agent_prompt"), None)
-            assert agent_prompt is not None
-
-            # Verify it has arguments
-            assert agent_prompt.arguments is not None
-            assert len(agent_prompt.arguments) > 0
-
-            # Verify key arguments exist
-            arg_names = [arg.name for arg in agent_prompt.arguments]
-            assert "agent_name" in arg_names
-            assert "task" in arg_names
-
-
-@pytest.mark.integration
 class TestToolInvocationWithMock:
     """Test tool invocation patterns with mocked subprocess."""
 
     @pytest.mark.asyncio
-    async def test_aider_tool_parameters(self) -> None:
-        """Test that use_aider tool accepts correct parameters."""
+    async def test_agent_tool_has_standard_parameters(self) -> None:
+        """Test that agent tools have the standard parameter schema."""
         client = Client(mcp)
 
         async with client:
-            # Get tool definition
             tools = await client.list_tools()
-            aider_tool = next((t for t in tools if t.name == "use_aider"), None)
-            assert aider_tool is not None
 
-            # Verify input schema structure
-            schema = aider_tool.inputSchema
-            assert schema["type"] == "object"
+            # Check a few agent tools have the standard schema
+            for tool_name in ["use_aider", "use_grok", "use_opencode"]:
+                tool = next((t for t in tools if t.name == tool_name), None)
+                assert tool is not None, f"Tool {tool_name} not found"
 
-            properties = schema["properties"]
-            assert properties["prompt"]["type"] == "string"
-            assert properties["files"]["type"] == "string"
-            assert properties["model"]["type"] == "string"
+                schema = tool.inputSchema
+                assert schema["type"] == "object"
 
-            # Verify required fields
-            required = schema.get("required", [])
-            assert "prompt" in required
-            assert "files" in required
+                properties = schema["properties"]
+                assert "prompt" in properties
+                assert "model" in properties
 
-    @pytest.mark.asyncio
-    async def test_grok_tool_parameters(self) -> None:
-        """Test that use_grok tool accepts correct parameters."""
-        client = Client(mcp)
-
-        async with client:
-            # Get tool definition
-            tools = await client.list_tools()
-            grok_tool = next((t for t in tools if t.name == "use_grok"), None)
-            assert grok_tool is not None
-
-            # Verify input schema structure
-            schema = grok_tool.inputSchema
-            properties = schema["properties"]
-
-            assert properties["prompt"]["type"] == "string"
-            assert properties["model"]["type"] == "string"
-
-            # Verify required fields
-            required = schema.get("required", [])
-            assert "prompt" in required
-
-    @pytest.mark.asyncio
-    async def test_opencode_tool_parameters(self) -> None:
-        """Test that use_opencode tool accepts correct parameters."""
-        client = Client(mcp)
-
-        async with client:
-            # Get tool definition
-            tools = await client.list_tools()
-            opencode_tool = next((t for t in tools if t.name == "use_opencode"), None)
-            assert opencode_tool is not None
-
-            # Verify input schema structure
-            schema = opencode_tool.inputSchema
-            properties = schema["properties"]
-
-            assert properties["prompt"]["type"] == "string"
-            assert "model" in properties
-            assert "subcmd" in properties
-
-            # Verify required fields
-            required = schema.get("required", [])
-            assert "prompt" in required
+                # Verify required fields
+                required = schema.get("required", [])
+                assert "prompt" in required

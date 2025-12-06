@@ -3,33 +3,44 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
 import os
 from pathlib import Path
 
+import glyx_python_sdk
+import logfire
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from supabase import create_client
 
-import importlib.util
-import glyx_python_sdk
+from api.webhooks import create_github_webhook_router, create_linear_webhook_router
+from glyx_python_sdk.settings import settings
 
-# Import mcp server - import directly from file path to avoid conflict with installed 'mcp' package
-from pathlib import Path
+# Configure Logfire early, before any instrumentation
+logfire.configure(
+    send_to_logfire="if-token-present",
+    service_name="glyx-ai",
+    environment=os.environ.get("ENVIRONMENT", "development"),
+)
+logfire.instrument_pydantic_ai()
+logfire.instrument_httpx(capture_all=True)
 
-_mcp_server_path = Path(__file__).parent.parent / "mcp" / "server.py"
+_mcp_server_path = Path(__file__).parent.parent / "glyx_mcp" / "server.py"
 _spec = importlib.util.spec_from_file_location("mcp_server_module", _mcp_server_path)
 _mcp_server_module = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mcp_server_module)
 mcp = _mcp_server_module.mcp
 
-# Import API routes
-from api.routes import (
+# Import API routes (after dynamic mcp module load)
+from api.routes import (  # noqa: E402
     agents,
     auth,
+    composable_workflows,
     deployments,
     health,
     memory,
@@ -119,6 +130,9 @@ Required environment variables:
     ],
 )
 
+logfire.instrument_fastapi(api_app)
+
+
 # Mount static files
 static_path = Path(__file__).parent.parent / "static"
 if static_path.exists():
@@ -134,6 +148,7 @@ api_app.include_router(health.router)
 api_app.include_router(streaming.router)
 api_app.include_router(sequences.router)
 api_app.include_router(workflows.router)
+api_app.include_router(composable_workflows.router)
 api_app.include_router(organizations.router)
 api_app.include_router(tasks.router)
 api_app.include_router(auth.router)
@@ -142,11 +157,6 @@ api_app.include_router(agents.router)
 api_app.include_router(deployments.router)
 
 # Register webhook routers
-from supabase import create_client
-
-from api.webhooks import create_github_webhook_router, create_linear_webhook_router
-from glyx_python_sdk.settings import settings
-
 github_webhook_router = create_github_webhook_router(
     lambda: create_client(settings.supabase_url, settings.supabase_anon_key)
 )

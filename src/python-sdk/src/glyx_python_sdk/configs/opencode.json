@@ -11,18 +11,18 @@
       "prompt": {
         "flag": "",
         "type": "string",
-        "default": null,
+        "default": "",
         "description": "prompt or message positional argument"
       },
       "model": {
         "flag": "--model",
         "type": "string",
-        "default": null
+        "default": ""
       },
       "provider": {
         "flag": "--provider",
         "type": "string",
-        "default": null
+        "default": ""
       }
     },
     "description": "OpenCode CLI integration"

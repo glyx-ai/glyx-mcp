@@ -9,7 +9,6 @@ from glyx_python_sdk.models.cursor import (
 )
 from glyx_python_sdk.models.response import (
     ResponseEventType,
-    ResponseFunctionCallArgumentsDeltaEvent,
     ResponseOutputItemAddedEvent,
     ResponseOutputItemDoneEvent,
     ResponseOutputTextDeltaEvent,

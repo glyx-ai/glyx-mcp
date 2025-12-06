@@ -1,12 +1,11 @@
-"""GlyxSDKAgent - Expert on Glyx system with documentation handoff."""
+"""GlyxSDKAgent - Creates ComposableAgent configurations from user requests."""
 
 import json
 import logging
 
-from agents import Agent, AgentOutputSchema
-from agents.extensions.handoff_prompt import RECOMMENDED_PROMPT_PREFIX
+from agents import Agent, ModelSettings, WebSearchTool
 
-from glyx_python_sdk.agent import AgentConfig, ArgSpec, TaskConfig
+from glyx_python_sdk.agent_types import AgentConfig, ArgSpec, TaskConfig
 from glyx_python_sdk.agents.documentation_agent import create_documentation_agent
 from glyx_python_sdk.mcp_registry import CONTEXT7
 
@@ -17,72 +16,139 @@ AGENT_CONFIG_SCHEMA = json.dumps(AgentConfig.model_json_schema(), indent=2)
 ARG_SPEC_SCHEMA = json.dumps(ArgSpec.model_json_schema(), indent=2)
 TASK_CONFIG_SCHEMA = json.dumps(TaskConfig.model_json_schema(), indent=2)
 
-GLYX_SYSTEM_INSTRUCTIONS = f"""{RECOMMENDED_PROMPT_PREFIX}
+GLYX_SDK_AGENT_INSTRUCTIONS = f"""You create comprehensive CLI agent configurations with full feature support.
 
-You are an expert on the Glyx AI orchestration system. Your primary task is to help users
-convert CLI tool documentation into valid ComposableAgent configurations.
+## Your Workflow
+
+1. **Understand the request**: What CLI tool does the user want to configure?
+2. **Research**: Use web_search to find official CLI documentation
+3. **Fetch documentation**: Use fetch_cli_documentation to get detailed command references
+4. **Generate AgentConfig**: Output a configuration capturing ALL CLI features
 
 ## Pydantic Schemas
 
-### AgentConfig (main config for CLI agents)
+### AgentConfig
 ```json
 {AGENT_CONFIG_SCHEMA}
 ```
 
-### ArgSpec (specification for each CLI argument)
+### ArgSpec
 ```json
 {ARG_SPEC_SCHEMA}
 ```
 
-### TaskConfig (runtime task parameters)
+## Key Fields for ArgSpec
+
+- **name**: Argument identifier (e.g., "app", "region", "verbose")
+- **flag**: Long flag (e.g., "--app", "--region") or "" for positional
+- **short_flag**: Short alias (e.g., "-a", "-r") - IMPORTANT: capture these!
+- **type**: "string", "bool", "int", or "float"
+- **positional**: true if this is a positional argument (no flag prefix)
+- **position**: Order for positional args (0, 1, 2...)
+- **choices**: List of valid values (e.g., ["us", "eu", "ap"])
+- **variadic**: true if accepts multiple values (e.g., KEY=VALUE...)
+- **env_var**: Environment variable fallback (e.g., "HEROKU_APP")
+- **exclusive_group**: Group name for mutually exclusive options
+- **required**: Whether the argument is required
+- **default**: Default value as string
+- **description**: Help text for the argument
+
+## Critical Rules
+
+1. **Capture flag aliases**: If docs show "-a, --app", set BOTH flag="--app" AND short_flag="-a"
+2. **Identify positional args**: Arguments without flags (e.g., "heroku apps:info APP")
+3. **Extract choices**: When docs show "us|eu|ap" or list valid values, populate choices
+4. **Find env vars**: Look for "Defaults to $ENV_VAR" patterns
+5. **Detect exclusive groups**: When docs say "either X or Y", use same exclusive_group
+6. **Use subcommands**: For hierarchical CLIs (git, heroku, docker), use subcommands list
+
+## Example: Heroku CLI
+
+For "heroku apps:create [APP] --region us|eu --team TEAM --space SPACE":
+
 ```json
-{TASK_CONFIG_SCHEMA}
+{{
+  "agent_key": "heroku",
+  "command": "heroku",
+  "description": "Heroku CLI for managing apps",
+  "args": [
+    {{"name": "app", "flag": "--app", "short_flag": "-a", "env_var": "HEROKU_APP"}}
+  ],
+  "subcommands": [
+    {{
+      "name": "apps_create",
+      "command": "apps:create",
+      "description": "Create a new Heroku app",
+      "args": [
+        {{"name": "app_name", "positional": true, "position": 0, "required": false}},
+        {{"name": "region", "flag": "--region", "short_flag": "-r", "choices": ["us", "eu"]}},
+        {{"name": "team", "flag": "--team", "short_flag": "-t", "exclusive_group": "owner"}},
+        {{"name": "space", "flag": "--space", "exclusive_group": "owner"}},
+        {{"name": "json", "flag": "--json", "type": "bool"}}
+      ]
+    }}
+  ]
+}}
 ```
 
-## Workflow
-1. When given a CLI tool name or URL, handoff to the DocumentationAgent to fetch docs
-2. Analyze the returned documentation to extract CLI arguments
-3. Generate a valid AgentConfig JSON following the schemas above
+## Output Requirements
 
-## Key Rules
-- agent_key: lowercase, no spaces (e.g., "fastmcp", "cursor")
-- flag: the CLI flag (e.g., "--port", "-p") or "" for positional args
-- type: must be "string", "bool", or "int"
-- capabilities: relevant tags like ["code-generation", "file-editing", "web-scraping"]
+1. Output valid AgentConfig JSON
+2. Include ALL commands and subcommands from the documentation
+3. Capture EVERY flag alias (short and long forms)
+4. Identify ALL positional arguments with correct position ordering
+5. Extract choice constraints where documented
+6. Group mutually exclusive options
+7. Note environment variable defaults
 """
 
 
 def create_glyx_sdk_agent(model: str = "gpt-5.1") -> Agent:
-    """Create a GlyxSDKAgent with handoff to DocumentationAgent.
+    """Create a GlyxSDKAgent that generates ComposableAgent configurations.
+
+    The agent can:
+    - Search the web to find relevant CLI/API documentation
+    - Fetch documentation via Context7
+    - Generate valid AgentConfig from user requests
 
     Args:
         model: Model for the agent's reasoning
 
     Returns:
-        Agent configured to convert CLI docs to ComposableAgent configs
+        Agent configured to create ComposableAgent configs
 
     Example:
         ```python
         from agents import Runner
         from glyx_python_sdk.agents import create_glyx_sdk_agent
+        from glyx_python_sdk.mcp_registry import CONTEXT7
 
         async with CONTEXT7:
             agent = create_glyx_sdk_agent()
-            result = await Runner.run(agent, "Create an agent config for fastmcp CLI")
+            result = await Runner.run(agent, "Create an agent for Docker")
+            config = result.final_output_as(AgentConfig)
         ```
     """
     documentation_agent = create_documentation_agent(model=model)
 
     return Agent(
         name="GlyxSDKAgent",
-        instructions=GLYX_SYSTEM_INSTRUCTIONS,
+        instructions=GLYX_SDK_AGENT_INSTRUCTIONS,
         model=model,
-        output_type=AgentOutputSchema(AgentConfig, strict_json_schema=False),
+        output_type=AgentConfig,
+        model_settings=ModelSettings(
+            parallel_tool_calls=True,
+            response_include=[
+                "web_search_call.results",
+                "web_search_call.action.sources",
+            ],
+        ),
         tools=[
+            WebSearchTool(),
             documentation_agent.as_tool(
                 tool_name="fetch_cli_documentation",
-                tool_description="Fetch CLI tool documentation using Context7. Returns documentation text.",
-            )
+                tool_description="Fetch CLI/library documentation using Context7.",
+            ),
         ],
         mcp_servers=[CONTEXT7],
     )

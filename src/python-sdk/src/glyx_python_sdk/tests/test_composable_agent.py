@@ -17,7 +17,7 @@ from glyx_python_sdk import (
 @pytest.fixture(autouse=True)
 def mock_broadcast_event():
     """Auto-mock broadcast_event for all tests."""
-    with patch("glyx_python_sdk.agent.broadcast_event", new_callable=AsyncMock):
+    with patch("glyx_python_sdk.composable_agents.broadcast_event", new_callable=AsyncMock):
         yield
 
 
@@ -56,13 +56,13 @@ class TestCommandBuilding:
         config = AgentConfig(
             agent_key="test_agent",
             command="test_cli",
-            args={
-                "prompt": ArgSpec(flag="--message", type="string", required=True),
-                "model": ArgSpec(flag="--model", type="string", default="gpt-4"),
-                "files": ArgSpec(flag="--file", type="string", required=True),
-                "no_git": ArgSpec(flag="--no-git", type="bool", default=True),
-                "yes_always": ArgSpec(flag="--yes-always", type="bool", default=True),
-            },
+            args=[
+                ArgSpec(name="prompt", flag="--message", type="string", required=True),
+                ArgSpec(name="model", flag="--model", type="string", default="gpt-4"),
+                ArgSpec(name="files", flag="--file", type="string", required=True),
+                ArgSpec(name="no_git", flag="--no-git", type="bool", default="true"),
+                ArgSpec(name="yes_always", flag="--yes-always", type="bool", default="true"),
+            ],
         )
 
         agent = ComposableAgent(config)
@@ -98,10 +98,10 @@ class TestCommandBuilding:
         config = AgentConfig(
             agent_key="test",
             command="test_cli",
-            args={
-                "prompt": ArgSpec(flag="-p", type="string", required=True),
-                "optional": ArgSpec(flag="--opt", type="string", default=None),
-            },
+            args=[
+                ArgSpec(name="prompt", flag="-p", type="string", required=True),
+                ArgSpec(name="optional", flag="--opt", type="string", default=""),
+            ],
         )
 
         agent = ComposableAgent(config)
@@ -121,10 +121,10 @@ class TestCommandBuilding:
         config = AgentConfig(
             agent_key="test",
             command="test_cli",
-            args={
-                "subcmd": ArgSpec(flag="", type="string", default="run"),
-                "message": ArgSpec(flag="-m", type="string", required=True),
-            },
+            args=[
+                ArgSpec(name="subcmd", flag="", type="string", default="run"),
+                ArgSpec(name="message", flag="-m", type="string", required=True),
+            ],
         )
 
         agent = ComposableAgent(config)
@@ -146,10 +146,10 @@ class TestCommandBuilding:
         config = AgentConfig(
             agent_key="test",
             command="test_cli",
-            args={
-                "model": ArgSpec(flag="--model", type="string", default="default-model"),
-                "timeout": ArgSpec(flag="--timeout", type="string", default="30"),
-            },
+            args=[
+                ArgSpec(name="model", flag="--model", type="string", default="default-model"),
+                ArgSpec(name="timeout", flag="--timeout", type="string", default="30"),
+            ],
         )
 
         agent = ComposableAgent(config)
@@ -172,10 +172,10 @@ class TestCommandBuilding:
         config = AgentConfig(
             agent_key="test",
             command="test_cli",
-            args={
-                "verbose": ArgSpec(flag="--verbose", type="bool", default=False),
-                "quiet": ArgSpec(flag="--quiet", type="bool", default=False),
-            },
+            args=[
+                ArgSpec(name="verbose", flag="--verbose", type="bool", default=""),
+                ArgSpec(name="quiet", flag="--quiet", type="bool", default=""),
+            ],
         )
 
         agent = ComposableAgent(config)
@@ -196,9 +196,9 @@ class TestCommandBuilding:
         config = AgentConfig(
             agent_key="test",
             command="test_cli",
-            args={
-                "verbose": ArgSpec(flag="--verbose", type="bool", default=False),
-            },
+            args=[
+                ArgSpec(name="verbose", flag="--verbose", type="bool", default=""),
+            ],
         )
 
         agent = ComposableAgent(config)

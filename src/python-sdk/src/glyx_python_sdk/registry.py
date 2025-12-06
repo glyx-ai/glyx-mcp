@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from agents import SQLiteSession
 from fastmcp import Context
 
-from glyx_python_sdk.agent import ComposableAgent
+from glyx_python_sdk.composable_agents import ComposableAgent
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -96,42 +96,59 @@ def make_agent_wrapper(agent_instance: ComposableAgent, timeout_val: int):
     return agent_wrapper
 
 
+def register_agents(
+    mcp: FastMCP,
+    configs: list,
+    timeout: int = 300,
+) -> dict[str, ComposableAgent]:
+    """Register agents from config list as MCP tools.
+
+    Args:
+        mcp: FastMCP server instance
+        configs: List of AgentConfig instances
+        timeout: Default timeout for agent execution (seconds)
+
+    Returns:
+        Dictionary mapping agent names to ComposableAgent instances
+    """
+    from glyx_python_sdk.agent_types import AgentConfig
+
+    agents: dict[str, ComposableAgent] = {}
+
+    for config in configs:
+        agent = ComposableAgent(config) if isinstance(config, AgentConfig) else ComposableAgent.from_file(config)
+        agent_name = agent.config.agent_key
+        agents[agent_name] = agent
+
+        agent_wrapper = make_agent_wrapper(agent, timeout)
+        agent_wrapper.__name__ = f"use_{agent_name}"
+        agent_wrapper.__doc__ = agent.config.description or f"Execute {agent_name} agent"
+
+        mcp.tool(agent_wrapper)
+        logger.info(f"Registered agent: {agent_name}")
+
+    logger.info(f"Registered {len(agents)} agents total")
+    return agents
+
+
 def discover_and_register_agents(
     mcp: FastMCP,
-    agents_dir: str | Path,
+    agents_dir: str | Path | None = None,
     timeout: int = 300,
 ) -> dict[str, ComposableAgent]:
     """Auto-discover agent configs and register as MCP tools.
 
     Args:
         mcp: FastMCP server instance
-        agents_dir: Directory containing agent JSON configs
+        agents_dir: Directory containing agent JSON configs (deprecated, uses configs module)
         timeout: Default timeout for agent execution (seconds)
 
     Returns:
         Dictionary mapping agent names to ComposableAgent instances
     """
-    agents_path = Path(agents_dir)
-    logger.info(f"Discovering agents in {agents_path}")
+    from glyx_python_sdk.configs import ALL_CONFIGS
 
-    agents: dict[str, ComposableAgent] = {}
+    if agents_dir:
+        logger.warning("agents_dir parameter is deprecated, using glyx_python_sdk.configs")
 
-    for json_file in agents_path.glob("*.json"):
-        try:
-            agent = ComposableAgent.from_file(json_file)
-            agent_name = agent.config.agent_key
-            agents[agent_name] = agent
-
-            agent_wrapper = make_agent_wrapper(agent, timeout)
-            agent_wrapper.__name__ = f"use_{agent_name}"
-            agent_wrapper.__doc__ = agent.config.description or f"Execute {agent_name} agent"
-
-            mcp.tool(agent_wrapper)
-            logger.info(f"Registered agent: {agent_name}")
-
-        except Exception as e:
-            logger.error(f"Failed to load agent from {json_file}: {e}")
-            continue
-
-    logger.info(f"Registered {len(agents)} agents total")
-    return agents
+    return register_agents(mcp, ALL_CONFIGS, timeout)

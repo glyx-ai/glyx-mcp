@@ -59,7 +59,7 @@ async def test_linear_client_emit_activity():
 
         result = await client.emit_activity("session-123", "thought", "Test content")
 
-        assert "data" in result
+        assert "agentActivityCreate" in result
         mock_client_instance.post.assert_called_once()
 
 

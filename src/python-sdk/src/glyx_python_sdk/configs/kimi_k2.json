@@ -1,5 +1,5 @@
 {
-  "deepseek_r1": {
+  "kimi_k2": {
     "command": "opencode",
     "args": {
       "subcmd": {
@@ -11,16 +11,16 @@
       "model": {
         "flag": "--model",
         "type": "string",
-        "default": "openrouter/deepseek/deepseek-r1:free",
-        "description": "Use DeepSeek R1 reasoning model via OpenRouter"
+        "default": "openrouter/moonshotai/kimi-k2",
+        "description": "Use Kimi K2 model via OpenRouter"
       },
       "prompt": {
         "flag": "",
         "type": "string",
-        "default": null,
-        "description": "Message to send to DeepSeek R1"
+        "default": "",
+        "description": "Message to send to Kimi K2"
       }
     },
-    "description": "OpenCode CLI configured with DeepSeek R1 model"
+    "description": "OpenCode CLI configured with Kimi K2 model"
   }
 }

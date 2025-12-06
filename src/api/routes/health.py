@@ -100,7 +100,7 @@ async def health_detailed() -> dict[str, Any]:
     if settings.supabase_url and settings.supabase_anon_key:
         try:
             client = create_client(settings.supabase_url, settings.supabase_anon_key)
-            client.table("organizations").select("id").limit(1).execute()
+            client.table("orchestrations").select("id").limit(1).execute()
             checks["checks"]["supabase"] = {"status": "ok", "message": "Connected"}
         except Exception as e:
             checks["checks"]["supabase"] = {"status": "error", "message": str(e)}

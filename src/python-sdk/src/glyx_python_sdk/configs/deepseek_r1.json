@@ -1,5 +1,5 @@
 {
-  "grok": {
+  "deepseek_r1": {
     "command": "opencode",
     "args": {
       "subcmd": {
@@ -11,16 +11,16 @@
       "model": {
         "flag": "--model",
         "type": "string",
-        "default": "openrouter/x-ai/grok-4.1",
-        "description": "Use Grok 4.1 model via OpenRouter"
+        "default": "openrouter/deepseek/deepseek-r1:free",
+        "description": "Use DeepSeek R1 reasoning model via OpenRouter"
       },
       "prompt": {
         "flag": "",
         "type": "string",
-        "default": null,
-        "description": "Message to send to Grok via OpenCode"
+        "default": "",
+        "description": "Message to send to DeepSeek R1"
       }
     },
-    "description": "OpenCode CLI configured with Grok-4.1 model (xAI provider)"
+    "description": "OpenCode CLI configured with DeepSeek R1 model"
   }
 }

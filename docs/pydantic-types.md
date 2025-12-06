@@ -472,8 +472,7 @@ except ValidationError as e:
 ### Runtime Errors
 
 ```python
-from glyx_python_sdk import AgentError
-from glyx_python_sdk.agent import AgentTimeoutError, AgentExecutionError, AgentConfigError
+from glyx_python_sdk import AgentError, AgentTimeoutError, AgentExecutionError, AgentConfigError
 
 try:
     result = await agent.execute(task_config)

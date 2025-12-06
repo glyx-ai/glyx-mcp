@@ -14,6 +14,8 @@ dependencies = [
     "uvicorn>=0.30.0",
     "httpx>=0.27.0",
     "dbos>=1.0.0",
+    "logfire[fastapi]>=4.16.0",
+    "pydantic-ai>=1.27.0",
 ]
 
 [tool.uv.sources]
@@ -32,7 +34,7 @@ dev = [
 ]
 
 [project.scripts]
-glyx-mcp = "mcp.server:main"
+glyx-mcp = "glyx_mcp.server:main"
 glyx-mcp-http = "api.server:run_http"
 
 [build-system]

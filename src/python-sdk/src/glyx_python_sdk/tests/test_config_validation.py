@@ -16,8 +16,9 @@ class TestArgSpecValidation:
 
     def test_valid_argspec_loads_successfully(self) -> None:
         """Test that a valid ArgSpec passes validation."""
-        arg = ArgSpec(flag="--message", type="string", required=True, description="Test argument")
+        arg = ArgSpec(name="message", flag="--message", type="string", required=True, description="Test argument")
 
+        assert arg.name == "message"
         assert arg.flag == "--message"
         assert arg.type == "string"
         assert arg.required is True
@@ -25,18 +26,20 @@ class TestArgSpecValidation:
 
     def test_argspec_defaults(self) -> None:
         """Test that ArgSpec has correct default values."""
-        arg = ArgSpec()
+        arg = ArgSpec(name="test")
 
         assert arg.flag == ""
         assert arg.type == "string"
         assert arg.required is False
-        assert arg.default is None
+        assert arg.default == ""
         assert arg.description == ""
 
     def test_invalid_arg_type_raises_validation_error(self) -> None:
         """Test that invalid argument types are caught."""
         with pytest.raises(ValidationError) as exc_info:
-            ArgSpec(flag="--test", type="invalid_type", required=False)  # Should only be string/bool/int
+            ArgSpec(
+                name="test", flag="--test", type="invalid_type", required=False
+            )  # Should only be string/bool/int/float
 
         error_str = str(exc_info.value)
         assert "type" in error_str.lower()
@@ -44,25 +47,32 @@ class TestArgSpecValidation:
     def test_arg_type_literal_enforcement(self) -> None:
         """Test that only valid arg types are accepted."""
         # Valid types should work
-        valid_types = ["string", "bool", "int"]
+        valid_types = ["string", "bool", "int", "float"]
         for arg_type in valid_types:
-            arg = ArgSpec(flag="--test", type=arg_type)
+            arg = ArgSpec(name="test", flag="--test", type=arg_type)
             assert arg.type == arg_type
 
         # Invalid types should fail
-        invalid_types = ["float", "list", "dict", "tuple"]
+        invalid_types = ["list", "dict", "tuple", "object"]
         for invalid_type in invalid_types:
             with pytest.raises(ValidationError):
-                ArgSpec(flag="--test", type=invalid_type)
+                ArgSpec(name="test", flag="--test", type=invalid_type)
 
     def test_argspec_with_all_fields(self) -> None:
         """Test ArgSpec with all fields specified."""
-        arg = ArgSpec(flag="--verbose", type="bool", required=False, default=True, description="Enable verbose output")
+        arg = ArgSpec(
+            name="verbose",
+            flag="--verbose",
+            type="bool",
+            required=False,
+            default="true",
+            description="Enable verbose output",
+        )
 
         assert arg.flag == "--verbose"
         assert arg.type == "bool"
         assert arg.required is False
-        assert arg.default is True
+        assert arg.default == "true"
         assert arg.description == "Enable verbose output"
 
 
@@ -74,15 +84,16 @@ class TestAgentConfigValidation:
         config = AgentConfig(
             agent_key="test",
             command="test_cli",
-            args={
-                "prompt": ArgSpec(flag="--message", type="string", required=True),
-            },
+            args=[
+                ArgSpec(name="prompt", flag="--message", type="string", required=True),
+            ],
             description="Test agent",
         )
 
         assert config.agent_key == "test"
         assert config.command == "test_cli"
-        assert "prompt" in config.args
+        assert len(config.args) == 1
+        assert config.args[0].name == "prompt"
         assert config.description == "Test agent"
 
     def test_missing_required_field_raises_validation_error(self) -> None:
@@ -91,7 +102,7 @@ class TestAgentConfigValidation:
             AgentConfig(
                 agent_key="test",
                 # Missing 'command' - required field
-                args={},
+                args=[],
             )
 
         error = exc_info.value
@@ -101,13 +112,13 @@ class TestAgentConfigValidation:
     def test_empty_command_raises_validation_error(self) -> None:
         """Test that empty command string is rejected."""
         with pytest.raises(ValidationError) as exc_info:
-            AgentConfig(agent_key="test", command="", args={})  # Empty string should fail min_length validation
+            AgentConfig(agent_key="test", command="", args=[])  # Empty string should fail min_length validation
 
         assert "command" in str(exc_info.value).lower()
 
-    def test_config_with_empty_args_dict(self) -> None:
+    def test_config_with_empty_args_list(self) -> None:
         """Test that config with no arguments is valid."""
-        config = AgentConfig(agent_key="simple", command="simple_cli", args={})
+        config = AgentConfig(agent_key="simple", command="simple_cli", args=[])
 
         assert config.agent_key == "simple"
         assert config.command == "simple_cli"
@@ -116,7 +127,7 @@ class TestAgentConfigValidation:
     def test_config_with_capabilities(self) -> None:
         """Test that optional capabilities field works."""
         config = AgentConfig(
-            agent_key="test", command="test_cli", args={}, capabilities=["code_generation", "reasoning", "analysis"]
+            agent_key="test", command="test_cli", args=[], capabilities=["code_generation", "reasoning", "analysis"]
         )
 
         assert len(config.capabilities) == 3
@@ -125,15 +136,15 @@ class TestAgentConfigValidation:
 
     def test_config_defaults(self) -> None:
         """Test that optional fields have correct defaults."""
-        config = AgentConfig(agent_key="minimal", command="minimal_cli", args={})
+        config = AgentConfig(agent_key="minimal", command="minimal_cli", args=[])
 
-        assert config.description is None
-        assert config.version is None
+        assert config.description == ""
+        assert config.version == ""
         assert config.capabilities == []
 
     def test_config_with_version(self) -> None:
         """Test that version field is stored correctly."""
-        config = AgentConfig(agent_key="test", command="test_cli", args={}, version=">=1.0.0")
+        config = AgentConfig(agent_key="test", command="test_cli", args=[], version=">=1.0.0")
 
         assert config.version == ">=1.0.0"
 
@@ -142,19 +153,19 @@ class TestAgentConfigValidation:
         config = AgentConfig(
             agent_key="complex",
             command="complex_cli",
-            args={
-                "message": ArgSpec(flag="--message", type="string", required=True),
-                "verbose": ArgSpec(flag="--verbose", type="bool", default=False),
-                "count": ArgSpec(flag="--count", type="int", default=10),
-                "subcmd": ArgSpec(flag="", type="string", default="run"),
-            },
+            args=[
+                ArgSpec(name="message", flag="--message", type="string", required=True),
+                ArgSpec(name="verbose", flag="--verbose", type="bool", default=""),
+                ArgSpec(name="count", flag="--count", type="int", default="10"),
+                ArgSpec(name="subcmd", flag="", type="string", default="run"),
+            ],
         )
 
         assert len(config.args) == 4
-        assert config.args["message"].type == "string"
-        assert config.args["verbose"].type == "bool"
-        assert config.args["count"].type == "int"
-        assert config.args["subcmd"].flag == ""  # Positional
+        assert config.args[0].type == "string"
+        assert config.args[1].type == "bool"
+        assert config.args[2].type == "int"
+        assert config.args[3].flag == ""  # Positional
 
 
 class TestConfigFromFile:
@@ -170,7 +181,7 @@ class TestConfigFromFile:
                 {
                     "test_agent": {
                         "command": "test_cli",
-                        "args": {"prompt": {"flag": "--message", "type": "string", "required": True}},
+                        "args": {"prompt": {"name": "prompt", "flag": "--message", "type": "string", "required": True}},
                     }
                 }
             )
@@ -208,7 +219,9 @@ class TestConfigFromFile:
                 {
                     "test": {
                         "command": "test_cli",
-                        "args": {"bad_arg": {"flag": "--bad", "type": "float", "required": False}},  # Invalid type
+                        "args": {
+                            "bad_arg": {"name": "bad_arg", "flag": "--bad", "type": "object", "required": False}
+                        },  # Invalid type
                     }
                 }
             )
@@ -285,7 +298,7 @@ class TestExistingAgentConfigs:
         print(f"\nValidated {valid_count} agent configs, skipped {skipped_count}")
 
         if errors:
-            pytest.fail(f"Config validation failed:\n" + "\n".join(errors))
+            pytest.fail("Config validation failed:\n" + "\n".join(errors))
 
     def test_aider_config_structure(self) -> None:
         """Test that aider.json has expected structure."""

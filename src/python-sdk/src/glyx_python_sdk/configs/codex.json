@@ -9,7 +9,7 @@
         "required": true,
         "description": "The prompt to send to Codex",
         "type": "string",
-        "default": null
+        "default": ""
       },
       "model": {
         "flag": "--model",
@@ -23,7 +23,7 @@
         "required": false,
         "description": "Set working directory for Codex",
         "type": "string",
-        "default": null
+        "default": ""
       },
       "sandbox": {
         "flag": "--sandbox",
@@ -37,21 +37,21 @@
         "required": false,
         "description": "Enable full automation mode",
         "type": "bool",
-        "default": false
+        "default": "false"
       },
       "quiet": {
         "flag": "--quiet",
         "required": false,
         "description": "Quiet mode (minimal output)",
         "type": "bool",
-        "default": false
+        "default": "false"
       },
       "json": {
         "flag": "--json",
         "required": false,
         "description": "Output in JSON format",
         "type": "bool",
-        "default": false
+        "default": "false"
       }
     },
     "capabilities": [

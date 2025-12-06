@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
 
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
 
 from glyx_python_sdk import discover_and_register_agents, search_memory, save_memory
-import glyx_python_sdk
-
 from glyx_python_sdk.tools.interact_with_user import ask_user
 from glyx_python_sdk.tools.session_tools import get_session_messages, list_sessions
 from glyx_python_sdk.tools.orchestrate import orchestrate
@@ -35,12 +32,8 @@ to_client_logger.setLevel(level=logging.INFO)
 # Register tools with MCP server
 logger.info("Initializing MCP tools...")
 
-# Auto-discover and register agents from JSON configs
-# Agents are in the SDK package (go up from src/glyx_python_sdk/__init__.py to src/ then to agents/)
-_sdk_src_path = Path(glyx_python_sdk.__file__).parent.parent  # src/python-sdk/src
-_sdk_root = _sdk_src_path.parent  # src/python-sdk
-agents_dir = _sdk_root / "agents"
-discover_and_register_agents(mcp, agents_dir)
+# Register agents from SDK configs
+discover_and_register_agents(mcp)
 
 # Register non-agent tools manually
 mcp.tool(ask_user)

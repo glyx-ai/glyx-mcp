@@ -25,15 +25,24 @@ def _get_mem0_client() -> MemoryClient:
 CUSTOM_CATEGORIES = [
     {
         "category": "architecture",
-        "description": "System design, component structure, module organization, design patterns, and how the system is architected",
+        "description": (
+            "System design, component structure, module organization, "
+            "design patterns, and how the system is architected"
+        ),
     },
     {
         "category": "integrations",
-        "description": "How different systems connect: MCP tools, SDK integrations, API boundaries, third-party services, and inter-component communication",
+        "description": (
+            "How different systems connect: MCP tools, SDK integrations, "
+            "API boundaries, third-party services, and inter-component communication"
+        ),
     },
     {
         "category": "code_style_guidelines",
-        "description": "Project conventions, coding style preferences, naming patterns, formatting rules, and code quality standards",
+        "description": (
+            "Project conventions, coding style preferences, naming patterns, "
+            "formatting rules, and code quality standards"
+        ),
     },
     {
         "category": "project_id",
@@ -41,19 +50,29 @@ CUSTOM_CATEGORIES = [
     },
     {
         "category": "observability",
-        "description": "Logging strategies, tracing implementation, monitoring setup, debugging approaches, and error handling patterns",
+        "description": (
+            "Logging strategies, tracing implementation, monitoring setup, "
+            "debugging approaches, and error handling patterns"
+        ),
     },
     {
         "category": "product",
-        "description": "Product features, user-facing functionality, capabilities, and what the system delivers to users",
+        "description": (
+            "Product features, user-facing functionality, capabilities, " "and what the system delivers to users"
+        ),
     },
     {
         "category": "key_concept",
-        "description": "Important concepts, patterns, paradigms, and fundamental ideas that are central to understanding the system",
+        "description": (
+            "Important concepts, patterns, paradigms, and fundamental ideas "
+            "that are central to understanding the system"
+        ),
     },
     {
         "category": "tasks",
-        "description": "Task tracking, orchestration progress, agent assignments, task status updates, and work coordination",
+        "description": (
+            "Task tracking, orchestration progress, agent assignments, " "task status updates, and work coordination"
+        ),
     },
 ]
 
@@ -164,7 +183,7 @@ def save_memory(
     if metadata_dict:
         memory_dict["metadata"] = metadata_dict
 
-    logger.debug(f"Calling mem0_client.add with enable_graph=True")
+    logger.debug("Calling mem0_client.add with enable_graph=True")
     result = _get_mem0_client().add(enable_graph=True, **memory_dict)
 
     response = f"Memory saved: {result}"

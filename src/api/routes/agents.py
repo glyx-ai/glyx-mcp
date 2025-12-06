@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from enum import Enum
 from pathlib import Path
+from typing import AsyncGenerator
 
-from agents import Runner
+from agents import ItemHelpers, Runner
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from openai.types.responses import ResponseTextDeltaEvent
 from pydantic import BaseModel, Field
 from supabase import create_client
 
-from glyx_python_sdk import ComposableAgent
-from glyx_python_sdk.agent import AgentConfig
+from glyx_python_sdk import AgentConfig, ComposableAgent
 from glyx_python_sdk.agents.glyx_sdk_agent import create_glyx_sdk_agent
 from glyx_python_sdk.mcp_registry import CONTEXT7
 from glyx_python_sdk.settings import settings
@@ -46,24 +49,26 @@ class CreateAgentResponse(BaseModel):
 
 
 class CLIImportRequest(BaseModel):
-    """Request to import CLI documentation from URL."""
+    """Request to create agent from prompt, optionally with documentation URL."""
 
-    url: str = Field(..., description="URL of CLI documentation")
-    model: str = Field(default="gpt-5.1", description="LLM model for parsing")
-    org_id: str = Field(..., description="Organization ID")
+    prompt: str = Field(..., description="User prompt describing the agent to create")
+    url: str | None = Field(default=None, description="Optional URL of CLI documentation")
+    model: str = Field(default="gpt-4o", description="LLM model for parsing")
+    org_id: str = Field(..., description="Organization/Project ID")
 
 
 class CLIImportResponse(BaseModel):
     """Response from CLI import."""
 
-    agent_config: AgentConfig
-    source_url: str
+    status: str = Field(description="'success' or 'needs_clarification'")
+    agent_config: AgentConfig | None = Field(default=None)
+    clarification_question: str | None = Field(default=None)
+    source_url: str | None = Field(default=None)
 
 
 def get_agents_dir() -> Path:
     """Get agents directory path from SDK."""
     import glyx_python_sdk
-    from pathlib import Path
 
     sdk_path = Path(glyx_python_sdk.__file__).parent.parent
     return sdk_path / "agents"
@@ -97,35 +102,166 @@ async def api_list_agents() -> list[AgentResponse]:
     return result
 
 
+def _sse_event(event_type: str, data: dict) -> str:
+    """Format a Server-Sent Event."""
+    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+
+
+async def _stream_agent_response(request: CLIImportRequest) -> AsyncGenerator[str, None]:
+    """Stream agent response events as SSE."""
+    logger.info(f"[AGENT_CREATE] User prompt: {request.prompt}")
+    logger.info(f"[AGENT_CREATE] URL provided: {request.url}")
+
+    async with CONTEXT7:
+        agent = create_glyx_sdk_agent(model=request.model)
+
+        if request.url:
+            prompt = f"""User request: {request.prompt}
+
+Documentation URL: {request.url}
+
+Fetch and parse the CLI documentation from the URL above. \
+Extract the CLI configuration and generate a valid AgentConfig."""
+        else:
+            prompt = request.prompt
+
+        logger.info(f"[AGENT_CREATE] Final prompt: {prompt[:500]}...")
+
+        # Use run_streamed for streaming responses
+        result = Runner.run_streamed(agent, prompt)
+
+        # Stream events as they come in
+        async for event in result.stream_events():
+            if event.type == "raw_response_event":
+                # Stream text deltas for real-time typing effect
+                if isinstance(event.data, ResponseTextDeltaEvent):
+                    yield _sse_event("text_delta", {"delta": event.data.delta})
+
+            elif event.type == "agent_updated_stream_event":
+                # Agent handoff or update
+                yield _sse_event(
+                    "agent_update",
+                    {
+                        "agent_name": event.new_agent.name,
+                    },
+                )
+
+            elif event.type == "run_item_stream_event":
+                item = event.item
+
+                if item.type == "tool_call_item":
+                    logger.info(f"[AGENT_CREATE] tool_call_item: {item}")
+                    # Tool is being called
+                    tool_name = getattr(item, "name", None) or getattr(item, "tool_name", "unknown")
+                    yield _sse_event(
+                        "tool_call",
+                        {
+                            "tool_name": tool_name,
+                            "status": "started",
+                        },
+                    )
+
+                elif item.type == "tool_call_output_item":
+                    # Tool finished with output
+                    output = str(item.output)[:500] if item.output else ""
+                    yield _sse_event(
+                        "tool_output",
+                        {
+                            "output": output,
+                        },
+                    )
+
+                elif item.type == "reasoning_item":
+                    # Reasoning/thinking content
+                    summary = getattr(item, "summary", None) or getattr(item, "text", "")
+                    if summary:
+                        yield _sse_event(
+                            "reasoning",
+                            {
+                                "text": str(summary)[:1000],
+                            },
+                        )
+
+                elif item.type == "message_output_item":
+                    # Final message output
+                    text = ItemHelpers.text_message_output(item)
+                    yield _sse_event("message", {"text": text})
+
+        # Get final output
+        final_output = result.final_output
+        logger.info(f"[AGENT_CREATE] result.final_output: {final_output}")
+
+        config = result.final_output_as(AgentConfig)
+        yield _sse_event(
+            "complete",
+            {
+                "status": "success",
+                "agent_config": config.model_dump(),
+                "source_url": request.url or "researched",
+            },
+        )
+
+
+@router.post("/import-stream")
+async def api_import_stream(request: CLIImportRequest) -> StreamingResponse:
+    """Stream agent creation with real-time events.
+
+    Returns Server-Sent Events with:
+    - text_delta: Streaming text tokens
+    - tool_call: When a tool is being called
+    - tool_output: Tool execution results
+    - reasoning: Agent reasoning/thinking
+    - agent_update: Agent handoffs
+    - message: Final message outputs
+    - complete: Final result with agent_config or clarification_question
+    - error: Error occurred
+    """
+    return StreamingResponse(
+        _stream_agent_response(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post("/import-from-url")
 async def api_import_from_url(request: CLIImportRequest) -> CLIImportResponse:
-    """Import agent configuration from CLI documentation URL."""
+    """Create agent configuration from user prompt, optionally with documentation URL."""
     try:
+        logger.info(f"[AGENT_CREATE] User prompt: {request.prompt}")
+        logger.info(f"[AGENT_CREATE] URL provided: {request.url}")
+
         async with CONTEXT7:
             agent = create_glyx_sdk_agent(model=request.model)
 
-            # Log agent configuration
-            logger.info(f"[CLI_IMPORT] Agent name: {agent.name}")
-            logger.info(f"[CLI_IMPORT] Agent model: {agent.model}")
-            logger.info(f"[CLI_IMPORT] Agent output_type: {agent.output_type}")
-            logger.info(f"[CLI_IMPORT] Agent handoffs: {agent.handoffs}")
-            logger.info(f"[CLI_IMPORT] Agent instructions (first 500 chars): {agent.instructions[:500]}")
+            if request.url:
+                prompt = f"""User request: {request.prompt}
 
-            prompt = f"Fetch and parse CLI documentation from {request.url}. Extract the CLI configuration."
-            logger.info(f"[CLI_IMPORT] Prompt: {prompt}")
+Documentation URL: {request.url}
+
+Fetch and parse the CLI documentation from the URL above. \
+Extract the CLI configuration and generate a valid AgentConfig."""
+            else:
+                prompt = request.prompt
+
+            logger.info(f"[AGENT_CREATE] Final prompt: {prompt[:500]}...")
 
             result = await Runner.run(agent, prompt)
 
-            # Log full result details
-            logger.info(f"[CLI_IMPORT] result type: {type(result)}")
-            logger.info(f"[CLI_IMPORT] result.final_output type: {type(result.final_output)}")
-            logger.info(f"[CLI_IMPORT] result.final_output: {result.final_output}")
-            logger.info(f"[CLI_IMPORT] result.last_agent: {result.last_agent}")
+            logger.info(f"[AGENT_CREATE] result.final_output: {result.final_output}")
 
             config = result.final_output_as(AgentConfig)
-            return CLIImportResponse(agent_config=config, source_url=request.url)
+            return CLIImportResponse(
+                status="success",
+                agent_config=config,
+                source_url=request.url or "researched",
+            )
+
     except Exception as e:
-        logger.error(f"Failed to import CLI from URL: {e}")
+        logger.error(f"Failed to create agent: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -137,6 +273,9 @@ async def api_create_agent(request: CreateAgentRequest) -> CreateAgentResponse:
 
     client = create_client(settings.supabase_url, settings.supabase_anon_key)
 
+    # Convert list-based args to dict for database storage
+    args_dict = {arg.name: {k: v for k, v in arg.model_dump().items() if k != "name"} for arg in request.config.args}
+
     # Prepare data for workflow_templates table
     template_data = {
         "name": request.config.agent_key,
@@ -146,7 +285,7 @@ async def api_create_agent(request: CreateAgentRequest) -> CreateAgentResponse:
         "config": {
             "agent_key": request.config.agent_key,
             "command": request.config.command,
-            "args": {k: v.model_dump() for k, v in request.config.args.items()},
+            "args": args_dict,
             "capabilities": request.config.capabilities,
             "version": request.config.version,
         },
