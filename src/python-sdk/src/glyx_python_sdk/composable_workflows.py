@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Position(BaseModel):
@@ -24,6 +24,16 @@ class AgentInstance(BaseModel):
     base_agent: str = Field(default="glyx", alias="baseAgent")
     system_prompt: str = Field(default="", alias="systemPrompt")
     tools: list[str] = Field(default_factory=list)
+
+    @field_validator("system_prompt", mode="before")
+    @classmethod
+    def coerce_system_prompt(cls, v: str | None) -> str:
+        return v or ""
+
+    @field_validator("tools", mode="before")
+    @classmethod
+    def coerce_tools(cls, v: list[str] | None) -> list[str]:
+        return v or []
 
 
 class WorkflowStage(BaseModel):
@@ -77,6 +87,26 @@ class ComposableWorkflowDB(BaseModel):
     created_at: str = Field(default="", serialization_alias="createdAt")
     updated_at: str = Field(default="", serialization_alias="updatedAt")
 
+    @field_validator("user_id", "project_id", "description", "template", "created_at", "updated_at", mode="before")
+    @classmethod
+    def coerce_str(cls, v: str | None) -> str:
+        return v or ""
+
+    @field_validator("stages", mode="before")
+    @classmethod
+    def coerce_stages(cls, v: list | None) -> list:
+        return v or []
+
+    @field_validator("connections", mode="before")
+    @classmethod
+    def coerce_connections(cls, v: list | None) -> list:
+        return v or []
+
+    @field_validator("parallel_stages", mode="before")
+    @classmethod
+    def coerce_parallel_stages(cls, v: list | None) -> list:
+        return v or []
+
 
 class ComposableWorkflowCreate(BaseModel):
     """Request model for creating a composable workflow."""
@@ -116,19 +146,7 @@ def _get_supabase_client():
 
 def _row_to_workflow(row: dict) -> ComposableWorkflowDB:
     """Convert database row to ComposableWorkflowDB."""
-    return ComposableWorkflowDB(
-        id=str(row["id"]),
-        user_id=row.get("user_id") or "",
-        project_id=row.get("project_id") or "",
-        name=row["name"],
-        description=row.get("description") or "",
-        template=row.get("template") or "",
-        stages=[WorkflowStage(**s) for s in (row.get("stages") or [])],
-        connections=[WorkflowConnection(**c) for c in (row.get("connections") or [])],
-        parallel_stages=row.get("parallel_stages") or [],
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-    )
+    return ComposableWorkflowDB.model_validate(row)
 
 
 def get_composable_workflow(workflow_id: str) -> ComposableWorkflowDB | None:

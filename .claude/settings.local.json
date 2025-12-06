@@ -49,7 +49,12 @@
       "mcp__pal__clink",
       "Bash(gh api:*)",
       "Bash(uv run pytest:*)",
-      "mcp__supabase__execute_sql"
+      "mcp__supabase__execute_sql",
+      "Bash(uv pip:*)",
+      "mcp__context7__resolve-library-id",
+      "Bash(python3:*)",
+      "Bash(gh pr create:*)",
+      "Bash(uv add:*)"
     ],
     "deny": [],
     "ask": [],

@@ -14,6 +14,8 @@ from fastmcp import Client
 
 from glyx_mcp.server import mcp
 
+pytestmark = pytest.mark.asyncio(loop_scope="function")
+
 
 @pytest.mark.integration
 class TestFastMCPClient:
