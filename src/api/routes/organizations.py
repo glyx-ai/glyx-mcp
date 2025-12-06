@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from supabase import create_client
 
-from api.utils import get_supabase
+from glyx_python_sdk.settings import settings
 from glyx_python_sdk.types import OrganizationCreate, OrganizationResponse
 
 router = APIRouter(prefix="/api/organizations", tags=["Organizations"])
@@ -15,7 +16,7 @@ DEFAULT_PROJECT_ID = "a0000000-0000-0000-0000-000000000001"
 @router.get("")
 async def api_list_organizations() -> list[OrganizationResponse]:
     """List all organizations from Supabase."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     response = (
         client.table("organizations")
         .select("*")
@@ -29,7 +30,7 @@ async def api_list_organizations() -> list[OrganizationResponse]:
 @router.post("")
 async def api_create_organization(body: OrganizationCreate) -> OrganizationResponse:
     """Create a new organization in Supabase."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     data = {
         "project_id": DEFAULT_PROJECT_ID,
         "name": body.name,
@@ -47,7 +48,7 @@ async def api_create_organization(body: OrganizationCreate) -> OrganizationRespo
 @router.get("/{org_id}")
 async def api_get_organization(org_id: str) -> OrganizationResponse:
     """Get an organization by ID."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     response = client.table("organizations").select("*").eq("id", org_id).single().execute()
     row = response.data
     return OrganizationResponse(**{**row, "id": str(row["id"])})
@@ -56,6 +57,6 @@ async def api_get_organization(org_id: str) -> OrganizationResponse:
 @router.delete("/{org_id}")
 async def api_delete_organization(org_id: str) -> dict[str, str]:
     """Delete an organization."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     client.table("organizations").delete().eq("id", org_id).execute()
     return {"status": "deleted"}

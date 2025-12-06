@@ -6,8 +6,9 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException
+from supabase import create_client
 
-from api.utils import get_supabase
+from glyx_python_sdk.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ async def api_list_deployments(
 ) -> list[dict]:
     """List deployments, optionally filtered by status or owner."""
     try:
-        supabase = get_supabase()
+        supabase = create_client(settings.supabase_url, settings.supabase_anon_key)
         query = supabase.table("deployments").select("*")
 
         if status:
@@ -44,7 +45,7 @@ async def api_get_deployment(
 ) -> dict:
     """Get specific deployment details."""
     try:
-        supabase = get_supabase()
+        supabase = create_client(settings.supabase_url, settings.supabase_anon_key)
         response = supabase.table("deployments").select("*").eq("id", deployment_id).single().execute()
         return response.data
     except Exception as e:
@@ -60,7 +61,7 @@ async def api_update_deployment(
 ) -> dict:
     """Update deployment status or configuration."""
     try:
-        supabase = get_supabase()
+        supabase = create_client(settings.supabase_url, settings.supabase_anon_key)
         update_data = {k: v for k, v in body.items() if v is not None}
         if "status" in update_data and update_data["status"] == "deployed":
             update_data["deployed_at"] = datetime.now().isoformat()
@@ -79,7 +80,7 @@ async def api_delete_deployment(
 ) -> dict[str, str]:
     """Delete a deployment."""
     try:
-        supabase = get_supabase()
+        supabase = create_client(settings.supabase_url, settings.supabase_anon_key)
         supabase.table("deployments").delete().eq("id", deployment_id).execute()
         return {"status": "deleted"}
     except Exception as e:

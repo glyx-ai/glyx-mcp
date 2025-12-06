@@ -49,13 +49,6 @@ from glyx_python_sdk.pipelines import (
 from glyx_python_sdk.prompts import build_task_prompt, get_orchestrator_instructions
 from glyx_python_sdk.registry import discover_and_register_agents, make_agent_wrapper
 from glyx_python_sdk.settings import Settings, settings
-from glyx_python_sdk.supabase_loader import (
-    delete_agent_from_supabase,
-    list_agents_from_supabase,
-    load_agents_from_supabase,
-    row_to_agent_config,
-    save_agent_to_supabase,
-)
 from glyx_python_sdk.types import TaskData
 from glyx_python_sdk.workflows import (
     AgentWorkflowConfig,
@@ -69,14 +62,15 @@ from glyx_python_sdk.workflows import (
 )
 from glyx_python_sdk.tools import (
     ask_user,
-    create_agent,
-    delete_agent,
-    get_agent,
     get_session_messages,
-    list_agents,
     list_sessions,
     orchestrate,
 )
+from glyx_python_sdk.agents.documentation_agent import (
+    create_documentation_agent,
+    retrieve_documentation_streamed,
+)
+from glyx_python_sdk.agents.glyx_sdk_agent import create_glyx_sdk_agent
 
 __version__ = "0.0.1"
 
@@ -133,12 +127,6 @@ __all__ = [
     # Settings
     "Settings",
     "settings",
-    # Supabase loader
-    "load_agents_from_supabase",
-    "save_agent_to_supabase",
-    "delete_agent_from_supabase",
-    "list_agents_from_supabase",
-    "row_to_agent_config",
     # Prompts
     "build_task_prompt",
     "get_orchestrator_instructions",
@@ -153,13 +141,14 @@ __all__ = [
     "delete_workflow",
     # MCP Tools
     "ask_user",
-    "create_agent",
-    "delete_agent",
-    "get_agent",
     "get_session_messages",
-    "list_agents",
     "list_sessions",
     "orchestrate",
+    # Documentation Agent
+    "create_documentation_agent",
+    "retrieve_documentation_streamed",
+    # GlyxSDK Agent
+    "create_glyx_sdk_agent",
     # Version
     "__version__",
 ]

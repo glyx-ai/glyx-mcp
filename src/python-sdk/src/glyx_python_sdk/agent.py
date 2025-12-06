@@ -5,7 +5,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from time import time
@@ -36,24 +36,17 @@ logger = logging.getLogger(__name__)
 class Event(BaseModel):
     """Generic event for the activity feed."""
 
-    org_id: str
+    organization_id: str
     org_name: str | None = None
     type: str
     actor: str = "system"
     content: str
     metadata: dict[str, Any] | None = None
-    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
-
-
-def get_supabase():
-    """Get Supabase client for event creation."""
-    if not settings.supabase_url or not settings.supabase_anon_key:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_ANON_KEY must be set")
-    return create_client(settings.supabase_url, settings.supabase_anon_key)
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
 
 
 async def create_event(
-    org_id: str,
+    organization_id: str,
     type: str,
     content: str,
     org_name: str | None = None,
@@ -62,14 +55,14 @@ async def create_event(
 ) -> Event:
     """Create an event record in Supabase."""
     event = Event(
-        org_id=org_id,
+        organization_id=organization_id,
         org_name=org_name,
         type=type,
         actor=actor,
         content=content,
         metadata=metadata,
     )
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     client.table("events").insert(event.model_dump()).execute()
     logger.info(f"[EVENT] Created: {event.type} - {event.content[:50]}")
     return event
@@ -348,7 +341,7 @@ class ComposableAgent:
         match event:
             case CursorToolCallEvent():
                 return Event(
-                    org_id=org_id,
+                    organization_id=org_id,
                     org_name=org_name,
                     content=event.tool_name,
                     type="tool_call",
@@ -365,7 +358,7 @@ class ComposableAgent:
                 content = "".join(block.get("text", "") for block in raw_content if isinstance(block, dict))
                 return (
                     Event(
-                        org_id=org_id,
+                        organization_id=org_id,
                         org_name=org_name,
                         content=content,
                         type="message",
@@ -376,7 +369,7 @@ class ComposableAgent:
                 )
             case CursorResultEvent(is_error=is_err, result=result, duration_ms=ms):
                 return Event(
-                    org_id=org_id,
+                    organization_id=org_id,
                     org_name=org_name,
                     content=result,
                     type="error" if is_err else "deployment",
@@ -423,7 +416,7 @@ class ComposableAgent:
             task_title = task_config.get("prompt", "").split("\n")[0][:100]
             asyncio.create_task(
                 create_event(
-                    org_id=org_id,
+                    organization_id=org_id,
                     type="message",
                     content=task_title or "Task started",
                     org_name=org_name,
@@ -523,7 +516,7 @@ class ComposableAgent:
                         logger.info(f"[AGENT STREAM] Thinking complete ({duration:.1f}s, {len(full_text)} chars)")
                         asyncio.create_task(
                             create_event(
-                                org_id=org_id,
+                                organization_id=org_id,
                                 type="thinking",
                                 content=full_text,
                                 org_name=org_name,
@@ -537,7 +530,7 @@ class ComposableAgent:
                         logger.info(f"[AGENT STREAM] Publishing event: {e.type}")
                         asyncio.create_task(
                             create_event(
-                                org_id=e.org_id,
+                                organization_id=e.organization_id,
                                 type=e.type,
                                 content=e.content,
                                 org_name=e.org_name,

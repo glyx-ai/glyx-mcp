@@ -142,11 +142,17 @@ api_app.include_router(agents.router)
 api_app.include_router(deployments.router)
 
 # Register webhook routers
-from api.utils import get_supabase
-from api.webhooks import create_github_webhook_router, create_linear_webhook_router
+from supabase import create_client
 
-github_webhook_router = create_github_webhook_router(get_supabase)
-linear_webhook_router = create_linear_webhook_router(get_supabase)
+from api.webhooks import create_github_webhook_router, create_linear_webhook_router
+from glyx_python_sdk.settings import settings
+
+github_webhook_router = create_github_webhook_router(
+    lambda: create_client(settings.supabase_url, settings.supabase_anon_key)
+)
+linear_webhook_router = create_linear_webhook_router(
+    lambda: create_client(settings.supabase_url, settings.supabase_anon_key)
+)
 api_app.include_router(github_webhook_router)
 api_app.include_router(linear_webhook_router)
 

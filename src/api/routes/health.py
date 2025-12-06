@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from time import time
 from typing import Any
 
 from fastapi import APIRouter
+from supabase import create_client
 
 from glyx_python_sdk import settings
-from pathlib import Path
-
-from api.utils import get_supabase
 
 # Track server start time for uptime metrics
 start_time = time()
@@ -100,7 +99,7 @@ async def health_detailed() -> dict[str, Any]:
     # Check Supabase connection
     if settings.supabase_url and settings.supabase_anon_key:
         try:
-            client = get_supabase()
+            client = create_client(settings.supabase_url, settings.supabase_anon_key)
             client.table("organizations").select("id").limit(1).execute()
             checks["checks"]["supabase"] = {"status": "ok", "message": "Connected"}
         except Exception as e:

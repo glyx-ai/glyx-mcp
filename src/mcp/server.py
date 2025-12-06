@@ -12,7 +12,6 @@ from fastmcp.utilities.logging import get_logger
 from glyx_python_sdk import discover_and_register_agents, search_memory, save_memory
 import glyx_python_sdk
 
-from glyx_python_sdk.tools.agent_crud import create_agent, delete_agent, get_agent, list_agents
 from glyx_python_sdk.tools.interact_with_user import ask_user
 from glyx_python_sdk.tools.session_tools import get_session_messages, list_sessions
 from glyx_python_sdk.tools.orchestrate import orchestrate
@@ -49,12 +48,6 @@ mcp.tool(search_memory)
 mcp.tool(save_memory)
 mcp.tool(list_sessions)
 mcp.tool(get_session_messages)
-
-# Agent CRUD tools (Supabase-backed)
-mcp.tool(create_agent)
-mcp.tool(list_agents)
-mcp.tool(delete_agent)
-mcp.tool(get_agent)
 
 # Register orchestrator as a tool (not prompt) due to Claude Code bug with MCP prompts
 # See: https://github.com/anthropics/claude-code/issues/6657

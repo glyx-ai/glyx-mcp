@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException
+from supabase import create_client
 
-from api.utils import get_supabase
+from glyx_python_sdk.settings import settings
 from glyx_python_sdk.types import AuthResponse, AuthSignInRequest, AuthSignUpRequest
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 @router.post("/signup")
 async def api_auth_signup(body: AuthSignUpRequest) -> AuthResponse:
     """Sign up a new user via Supabase Auth."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     options = {"data": body.metadata} if body.metadata else None
     response = client.auth.sign_up({"email": body.email, "password": body.password, "options": options})
     user = response.user
@@ -30,7 +31,7 @@ async def api_auth_signup(body: AuthSignUpRequest) -> AuthResponse:
 @router.post("/signin")
 async def api_auth_signin(body: AuthSignInRequest) -> AuthResponse:
     """Sign in a user via Supabase Auth."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     response = client.auth.sign_in_with_password({"email": body.email, "password": body.password})
     user = response.user
     session = response.session
@@ -46,7 +47,7 @@ async def api_auth_signin(body: AuthSignInRequest) -> AuthResponse:
 @router.post("/signout")
 async def api_auth_signout() -> dict[str, str]:
     """Sign out the current user."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     client.auth.sign_out()
     return {"status": "signed_out"}
 
@@ -54,7 +55,7 @@ async def api_auth_signout() -> dict[str, str]:
 @router.get("/user")
 async def api_auth_get_user(authorization: str | None = Header(None)) -> AuthResponse:
     """Get the current user from JWT token."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
     jwt = authorization[7:]

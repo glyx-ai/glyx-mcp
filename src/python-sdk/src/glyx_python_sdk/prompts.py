@@ -69,7 +69,7 @@ EXAMPLES OF GOOD MEMORIES:
 Example 1 - Architecture:
 ```
 save_memory(
-    content="Project uses FastMCP framework with OpenAI Agents SDK for orchestration. Main orchestrator in src/glyx/mcp/orchestration/orchestrator.py uses Runner.run_streamed() for parallel agent execution. Composable agents defined via JSON configs in src/glyx/mcp/config/.",
+    content="Project uses FastMCP framework with OpenAI Agents SDK for orchestration. Main orchestrator in src/python-sdk/src/glyx_python_sdk/orchestrator.py uses Runner.run_streamed() for parallel agent execution. Composable agents defined via JSON configs in src/python-sdk/agents/.",
     agent_id="orchestrator",
     run_id="abc123",
     category="architecture"

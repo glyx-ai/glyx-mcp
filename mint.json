@@ -170,7 +170,7 @@
   },
   "openapi": "docs/openapi.json",
   "api": {
-    "baseUrl": "http://localhost:8000",
+    "baseUrl": "https://glyx-mcp.fly.dev",
     "auth": {
       "method": "bearer"
     },

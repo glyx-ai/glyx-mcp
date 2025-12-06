@@ -73,7 +73,7 @@ def create_cursor_agent(
 
     Example:
         ```python
-        from glyx.mcp.sdk_agents.cursor_agent import create_cursor_agent
+        from glyx_python_sdk.agents.cursor_agent import create_cursor_agent
         from agents import Runner
 
         agent = create_cursor_agent(github_token="ghs_xxx")

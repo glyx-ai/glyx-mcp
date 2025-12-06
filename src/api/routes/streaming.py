@@ -67,7 +67,7 @@ async def stream_cursor(body: StreamCursorRequest) -> StreamingResponse:
     async def publish(event_type: str, content: str, metadata: dict | None = None):
         """Publish event to Supabase."""
         await create_event(
-            org_id=body.organization_id,
+            organization_id=body.organization_id,
             type=event_type,
             content=content,
             org_name=body.organization_name,

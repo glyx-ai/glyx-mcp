@@ -12,7 +12,6 @@ from agents import SQLiteSession
 from fastmcp import Context
 
 from glyx_python_sdk.agent import ComposableAgent
-from glyx_python_sdk.supabase_loader import load_agents_from_supabase
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -101,8 +100,6 @@ def discover_and_register_agents(
     mcp: FastMCP,
     agents_dir: str | Path,
     timeout: int = 300,
-    load_from_supabase: bool = True,
-    user_id: str | None = None,
 ) -> dict[str, ComposableAgent]:
     """Auto-discover agent configs and register as MCP tools.
 
@@ -110,8 +107,6 @@ def discover_and_register_agents(
         mcp: FastMCP server instance
         agents_dir: Directory containing agent JSON configs
         timeout: Default timeout for agent execution (seconds)
-        load_from_supabase: Whether to also load agents from Supabase
-        user_id: Optional user ID for loading user-specific agents
 
     Returns:
         Dictionary mapping agent names to ComposableAgent instances
@@ -137,21 +132,6 @@ def discover_and_register_agents(
         except Exception as e:
             logger.error(f"Failed to load agent from {json_file}: {e}")
             continue
-
-    if load_from_supabase:
-        db_configs = load_agents_from_supabase(user_id)
-        for config in db_configs:
-            if config.agent_key in agents:
-                logger.info(f"Supabase agent '{config.agent_key}' overrides file-based agent")
-
-            agent = ComposableAgent(config)
-            agents[config.agent_key] = agent
-
-            agent_wrapper = make_agent_wrapper(agent, timeout)
-            agent_wrapper.__name__ = f"use_{config.agent_key}"
-            agent_wrapper.__doc__ = config.description or f"Execute {config.agent_key} agent"
-            mcp.tool(agent_wrapper)
-            logger.info(f"Registered Supabase agent: {config.agent_key}")
 
     logger.info(f"Registered {len(agents)} agents total")
     return agents

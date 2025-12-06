@@ -8,11 +8,12 @@ import re
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
-
-from api.utils import get_supabase
-from glyx_python_sdk import settings
-from glyx_python_sdk.types import SmartTaskRequest, TaskResponse
 from openai import AsyncOpenAI
+from supabase import create_client
+
+from glyx_python_sdk import settings
+from glyx_python_sdk.agent import create_event
+from glyx_python_sdk.types import SmartTaskRequest, TaskResponse
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ def get_openrouter_client() -> AsyncOpenAI:
 @router.get("")
 async def api_list_tasks() -> list[TaskResponse]:
     """List all tasks from Supabase."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     response = client.table("tasks").select("*").order("created_at", desc=True).execute()  # type: ignore
     return [TaskResponse(**{**row, "id": str(row["id"])}) for row in response.data]
 
@@ -54,23 +55,42 @@ async def api_list_tasks() -> list[TaskResponse]:
 @router.post("")
 async def api_create_task(body: dict) -> TaskResponse:
     """Create a new task in Supabase."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
+    organization_id = body["organization_id"]
+    title = body["title"]
+
+    # Fetch organization name
+    org_response = client.table("organizations").select("name").eq("id", organization_id).single().execute()
+    org_name = org_response.data["name"]
+
     insert_data = {
-        "title": body["title"],
+        "title": title,
         "description": body["description"],
-        "organization_id": body["organization_id"],
+        "organization_id": organization_id,
         "status": "in_progress",
         "assigned_at": datetime.now().isoformat(),
     }
     response = client.table("tasks").insert(insert_data).execute()
     row = response.data[0]
-    return TaskResponse(**{**row, "id": str(row["id"])})
+    task_id = str(row["id"])
+
+    # Emit task creation event
+    await create_event(
+        organization_id=organization_id,
+        org_name=org_name,
+        type="deployment",
+        content=f"Task created: {title}",
+        actor="system",
+        metadata={"task_id": task_id, "status": "created"},
+    )
+
+    return TaskResponse(**{**row, "id": task_id})
 
 
 @router.get("/{task_id}")
 async def api_get_task(task_id: str) -> TaskResponse:
     """Get a task by ID."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     response = client.table("tasks").select("*").eq("id", task_id).single().execute()
     row = response.data
     return TaskResponse(**{**row, "id": str(row["id"])})
@@ -79,7 +99,7 @@ async def api_get_task(task_id: str) -> TaskResponse:
 @router.get("/linear/{session_id}")
 async def api_get_linear_task(session_id: str) -> TaskResponse | None:
     """Get a task by Linear session ID."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     response = (
         client.table("tasks")
         .select("*")
@@ -97,7 +117,7 @@ async def api_get_linear_task(session_id: str) -> TaskResponse | None:
 @router.get("/linear/workspace/{workspace_id}")
 async def api_list_linear_tasks(workspace_id: str) -> list[TaskResponse]:
     """List all tasks for a Linear workspace."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     response = (
         client.table("tasks")
         .select("*")
@@ -111,7 +131,7 @@ async def api_list_linear_tasks(workspace_id: str) -> list[TaskResponse]:
 @router.patch("/{task_id}")
 async def api_update_task(task_id: str, body: dict) -> TaskResponse:
     """Update a task."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     update_data = {k: v for k, v in body.items() if v is not None}
     response = client.table("tasks").update(update_data).eq("id", task_id).execute()
     row = response.data[0]
@@ -121,7 +141,7 @@ async def api_update_task(task_id: str, body: dict) -> TaskResponse:
 @router.delete("/{task_id}")
 async def api_delete_task(task_id: str) -> dict[str, str]:
     """Delete a task."""
-    client = get_supabase()
+    client = create_client(settings.supabase_url, settings.supabase_anon_key)
     client.table("tasks").delete().eq("id", task_id).execute()
     return {"status": "deleted"}
 
@@ -198,7 +218,7 @@ Return JSON with "title" and "description" fields."""
     full_description = f"{description}\n\nSource: {body.page_url}" if body.page_url else description
 
     # Create task in Supabase
-    supabase = get_supabase()
+    supabase = create_client(settings.supabase_url, settings.supabase_anon_key)
     insert_data = {
         "title": title,
         "description": full_description,
