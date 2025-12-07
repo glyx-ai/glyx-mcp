@@ -54,7 +54,9 @@
       "mcp__context7__resolve-library-id",
       "Bash(python3:*)",
       "Bash(gh pr create:*)",
-      "Bash(uv add:*)"
+      "Bash(uv add:*)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git rebase:*)"
     ],
     "deny": [],
     "ask": [],
