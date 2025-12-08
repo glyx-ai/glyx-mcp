@@ -22,11 +22,8 @@ from api.webhooks import create_github_webhook_router, create_linear_webhook_rou
 from glyx_python_sdk.settings import settings
 
 # Configure Logfire early, before any instrumentation
-logfire.configure(
-    send_to_logfire="if-token-present",
-    service_name="glyx-ai",
-    environment=os.environ.get("ENVIRONMENT", "development"),
-)
+logfire.configure(token="pylf_v1_us_HhZgSMtGmZZgsbXjNtLZC8zG48DWDtFyzLnHbC8PKCH7")
+logfire.instrument_logging()
 logfire.instrument_pydantic_ai()
 logfire.instrument_httpx(capture_all=True)
 
@@ -57,11 +54,6 @@ from api.routes import (  # noqa: E402
 _sdk_path = Path(glyx_python_sdk.__file__).parent.parent
 agents_dir = _sdk_path / "agents"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    force=True,
-)
 
 logger = logging.getLogger(__name__)
 

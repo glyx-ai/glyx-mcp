@@ -10,10 +10,7 @@ from glyx_python_sdk.models.cursor import (
     parse_cursor_event,
 )
 
-logging.basicConfig(
-    level=logging.WARNING,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+
 logger = logging.getLogger(__name__)
 
 

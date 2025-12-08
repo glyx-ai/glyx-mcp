@@ -102,7 +102,7 @@ Page content:
 {body.page_content[:8000]}"""
 
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5.1-mini",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},

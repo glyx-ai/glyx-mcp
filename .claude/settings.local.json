@@ -56,7 +56,12 @@
       "Bash(gh pr create:*)",
       "Bash(uv add:*)",
       "Bash(git cherry-pick:*)",
-      "Bash(git rebase:*)"
+      "Bash(git rebase:*)",
+      "Bash(gcloud config get-value:*)",
+      "Bash(gcloud auth:*)",
+      "Bash(git remote:*)",
+      "Bash(./setup_workload_identity.sh:*)",
+      "Bash(gcloud iam workload-identity-pools providers describe:*)"
     ],
     "deny": [],
     "ask": [],

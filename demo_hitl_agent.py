@@ -16,7 +16,7 @@ from pydantic_ai import (
 
 # Define agent with DeferredToolRequests as possible output type
 agent = Agent(
-    "openai:gpt-4o",
+    "openai:gpt-5.1",
     output_type=[str, DeferredToolRequests],
     system_prompt="You are a helpful assistant that can manage files and user accounts.",
 )

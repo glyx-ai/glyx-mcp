@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import get_logger
@@ -13,12 +12,6 @@ from glyx_python_sdk.tools.interact_with_user import ask_user
 from glyx_python_sdk.tools.session_tools import get_session_messages, list_sessions
 from glyx_python_sdk.tools.orchestrate import orchestrate
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stderr)],
-    force=True,
-)
 
 logger = logging.getLogger(__name__)
 

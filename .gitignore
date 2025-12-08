@@ -51,3 +51,7 @@ add_function.py
 test_add_function.py
 print_success.py
 hello.md
+
+# Setup scripts and docs
+.github/gemini-cli-setup.md
+setup_workload_identity.sh

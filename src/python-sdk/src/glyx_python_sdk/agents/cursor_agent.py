@@ -55,7 +55,7 @@ def create_run_cursor_task(github_token: str | None = None):
 
 def create_cursor_agent(
     instructions: str | None = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-5.1",
     github_token: str | None = None,
 ) -> Agent:
     """Create an OpenAI Agent SDK agent wrapping the Cursor ComposableAgent.

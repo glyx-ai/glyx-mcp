@@ -69,7 +69,7 @@ class TestCommandBuilding:
         mock_process = create_mock_process(stdout_lines=[b"success\n"])
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
-            task_config = {"prompt": "Add docstring", "files": "main.py", "model": "gpt-4o"}  # Override default
+            task_config = {"prompt": "Add docstring", "files": "main.py", "model": "gpt-5.1"}  # Override default
 
             result = await agent.execute(task_config, timeout=30)
 
@@ -80,7 +80,7 @@ class TestCommandBuilding:
                 "--message",
                 "Add docstring",
                 "--model",
-                "gpt-4o",
+                "gpt-5.1",
                 "--file",
                 "main.py",
                 "--no-git",

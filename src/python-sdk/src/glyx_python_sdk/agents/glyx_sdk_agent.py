@@ -37,22 +37,6 @@ GLYX_SDK_AGENT_INSTRUCTIONS = f"""You create comprehensive CLI agent configurati
 {ARG_SPEC_SCHEMA}
 ```
 
-## Key Fields for ArgSpec
-
-- **name**: Argument identifier (e.g., "app", "region", "verbose")
-- **flag**: Long flag (e.g., "--app", "--region") or "" for positional
-- **short_flag**: Short alias (e.g., "-a", "-r") - IMPORTANT: capture these!
-- **type**: "string", "bool", "int", or "float"
-- **positional**: true if this is a positional argument (no flag prefix)
-- **position**: Order for positional args (0, 1, 2...)
-- **choices**: List of valid values (e.g., ["us", "eu", "ap"])
-- **variadic**: true if accepts multiple values (e.g., KEY=VALUE...)
-- **env_var**: Environment variable fallback (e.g., "HEROKU_APP")
-- **exclusive_group**: Group name for mutually exclusive options
-- **required**: Whether the argument is required
-- **default**: Default value as string
-- **description**: Help text for the argument
-
 ## Critical Rules
 
 1. **Capture flag aliases**: If docs show "-a, --app", set BOTH flag="--app" AND short_flag="-a"
@@ -65,31 +49,6 @@ GLYX_SDK_AGENT_INSTRUCTIONS = f"""You create comprehensive CLI agent configurati
 ## Example: Heroku CLI
 
 For "heroku apps:create [APP] --region us|eu --team TEAM --space SPACE":
-
-```json
-{{
-  "agent_key": "heroku",
-  "command": "heroku",
-  "description": "Heroku CLI for managing apps",
-  "args": [
-    {{"name": "app", "flag": "--app", "short_flag": "-a", "env_var": "HEROKU_APP"}}
-  ],
-  "subcommands": [
-    {{
-      "name": "apps_create",
-      "command": "apps:create",
-      "description": "Create a new Heroku app",
-      "args": [
-        {{"name": "app_name", "positional": true, "position": 0, "required": false}},
-        {{"name": "region", "flag": "--region", "short_flag": "-r", "choices": ["us", "eu"]}},
-        {{"name": "team", "flag": "--team", "short_flag": "-t", "exclusive_group": "owner"}},
-        {{"name": "space", "flag": "--space", "exclusive_group": "owner"}},
-        {{"name": "json", "flag": "--json", "type": "bool"}}
-      ]
-    }}
-  ]
-}}
-```
 
 ## Output Requirements
 

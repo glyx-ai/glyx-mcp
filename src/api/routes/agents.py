@@ -53,7 +53,7 @@ class CLIImportRequest(BaseModel):
 
     prompt: str = Field(..., description="User prompt describing the agent to create")
     url: str | None = Field(default=None, description="Optional URL of CLI documentation")
-    model: str = Field(default="gpt-4o", description="LLM model for parsing")
+    model: str = Field(default="gpt-5.1", description="LLM model for parsing")
     org_id: str = Field(..., description="Organization/Project ID")
 
 

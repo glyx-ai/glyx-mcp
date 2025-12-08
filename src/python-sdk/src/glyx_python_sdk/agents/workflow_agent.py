@@ -58,7 +58,7 @@ Given a user description, generate a workflow configuration with stages and conn
 """
 
 
-def create_workflow_agent(model: str = "gpt-4o") -> Agent:
+def create_workflow_agent(model: str = "gpt-5.1") -> Agent:
     """Create a WorkflowAgent that generates ComposableWorkflow configurations.
 
     The agent creates visual workflow configurations based on user descriptions,

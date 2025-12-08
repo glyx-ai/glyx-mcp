@@ -9,7 +9,7 @@ from glyx_python_sdk.mcp_registry import CONTEXT7
 logger = logging.getLogger(__name__)
 
 
-def create_documentation_agent(model: str = "gpt-4o") -> Agent:
+def create_documentation_agent(model: str = "gpt-5.1") -> Agent:
     """Create a DocumentationAgent using Context7 MCP for documentation retrieval.
 
     Args:
@@ -38,7 +38,7 @@ def create_documentation_agent(model: str = "gpt-4o") -> Agent:
     )
 
 
-async def retrieve_documentation_streamed(query: str, model: str = "gpt-4o"):
+async def retrieve_documentation_streamed(query: str, model: str = "gpt-5.1"):
     """Retrieve documentation with streaming events.
 
     Args:

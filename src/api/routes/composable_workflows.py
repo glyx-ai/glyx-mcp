@@ -24,7 +24,7 @@ class WorkflowGenerateRequest(BaseModel):
     """Request body for workflow generation."""
 
     prompt: str
-    model: str = "gpt-4o"
+    model: str = "gpt-5.1"
 
 
 @router.post("/generate", summary="Generate Workflow with AI")
