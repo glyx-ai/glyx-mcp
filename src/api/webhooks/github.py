@@ -5,8 +5,12 @@ from typing import Any
 
 from glyx_python_sdk import settings
 from api.webhooks.base import WebhookConfig, create_webhook_router, log_webhook_event
+from knockapi import Knock
+from api.models.notifications import GitHubNotificationPayload
 
 logger = logging.getLogger(__name__)
+
+knock_client = Knock(api_key=settings.knock_api_key)
 
 
 def get_account_name(account: dict | None) -> str:
@@ -46,6 +50,23 @@ async def create_activity(
         }
     ).execute()
     logger.info(f"Created activity: {event_type} by {actor}")
+
+    # Send notification
+    # Send notification
+    payload = GitHubNotificationPayload(
+        event_type=event_type,
+        actor=actor,
+        repo=org_name or "unknown",
+        content=content,
+        metadata=metadata,
+    )
+    # Assuming 'github-activity' workflow exists in Knock
+    knock_client.workflows.trigger(
+        key="github-activity",
+        recipients=["github-channel"],
+        data=payload.model_dump(exclude_none=True),
+    )
+    logger.info(f"Triggered github-activity notification for {event_type}")
 
 
 async def handle_installation(payload: dict, supabase_client: Any) -> str:

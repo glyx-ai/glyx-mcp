@@ -50,3 +50,7 @@ Auto-discovered from JSON in `packages/sdk/agents/` and exposed as MCP tools (`u
 - **Error handling**: No defensive programming, prefer flat expressive style
 - **Coverage**: 40% minimum threshold
 - **Naming**: Follow existing patterns in codebase
+
+## External Integration Reference
+
+Knock (Messaging & Events): https://github.com/knocklabs/knock-python/blob/main/api.md

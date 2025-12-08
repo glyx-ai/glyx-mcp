@@ -14,8 +14,12 @@ from supabase import create_client
 from glyx_python_sdk import settings
 from glyx_python_sdk.composable_agents import create_event
 from glyx_python_sdk.types import SmartTaskRequest, TaskResponse
+from api.models.notifications import TaskNotificationPayload
+from knockapi import Knock
 
 logger = logging.getLogger(__name__)
+
+knock_client = Knock(api_key=settings.knock_api_key)
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
@@ -79,6 +83,22 @@ async def api_create_task(body: dict) -> TaskResponse:
         actor="system",
         metadata={"task_id": task_id, "status": "created"},
     )
+
+    # Send notification
+    payload = TaskNotificationPayload(
+        task_id=task_id,
+        title=title,
+        description=body.get("description"),
+        status="created",
+        url=f"/tasks/{task_id}",
+    )
+    # Assuming 'task-created' workflow exists in Knock
+    knock_client.workflows.trigger(
+        key="task-created",
+        recipients=[payload.assignee_id or "system-user"],
+        data=payload.model_dump(exclude_none=True),
+    )
+    logger.info(f"Triggered task-created notification for task {task_id}")
 
     return TaskResponse(**{**row, "id": task_id})
 

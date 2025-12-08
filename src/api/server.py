@@ -22,7 +22,12 @@ from api.webhooks import create_github_webhook_router, create_linear_webhook_rou
 from glyx_python_sdk.settings import settings
 
 # Configure Logfire early, before any instrumentation
-logfire.configure(token="pylf_v1_us_HhZgSMtGmZZgsbXjNtLZC8zG48DWDtFyzLnHbC8PKCH7")
+logfire.configure(
+    send_to_logfire="if-token-present",
+    service_name="glyx-ai",
+    token=os.environ.get("LOGFIRE_TOKEN"),
+    environment=os.environ.get("ENVIRONMENT", "development"),
+)
 logfire.instrument_logging()
 logfire.instrument_pydantic_ai()
 logfire.instrument_httpx(capture_all=True)
@@ -41,6 +46,7 @@ from api.routes import (  # noqa: E402
     deployments,
     github,
     health,
+    linear,
     memory,
     organizations,
     root,
@@ -149,6 +155,7 @@ api_app.include_router(memory.router)
 api_app.include_router(agents.router)
 api_app.include_router(deployments.router)
 api_app.include_router(github.router)
+api_app.include_router(linear.router)
 
 # Register webhook routers
 github_webhook_router = create_github_webhook_router(
@@ -157,6 +164,7 @@ github_webhook_router = create_github_webhook_router(
 linear_webhook_router = create_linear_webhook_router(
     lambda: create_client(settings.supabase_url, settings.supabase_anon_key)
 )
+
 api_app.include_router(github_webhook_router)
 api_app.include_router(linear_webhook_router)
 

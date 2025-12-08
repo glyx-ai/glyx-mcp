@@ -61,7 +61,12 @@
       "Bash(gcloud auth:*)",
       "Bash(git remote:*)",
       "Bash(./setup_workload_identity.sh:*)",
-      "Bash(gcloud iam workload-identity-pools providers describe:*)"
+      "Bash(gcloud iam workload-identity-pools providers describe:*)",
+      "WebSearch",
+      "WebFetch(domain:codelabs.developers.google.com)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:developers.googleblog.com)",
+      "WebFetch(domain:ai.google.dev)"
     ],
     "deny": [],
     "ask": [],

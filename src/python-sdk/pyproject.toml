@@ -29,6 +29,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "openinference-instrumentation-openai-agents>=1.3.0",
     "httpx>=0.27.0",
+    "knockapi>=0.1.0",
 ]
 
 [project.optional-dependencies]

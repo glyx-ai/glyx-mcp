@@ -17,6 +17,8 @@ dependencies = [
     "logfire[fastapi]>=4.16.0",
     "pydantic-ai>=1.27.0",
     "pytest-asyncio>=1.2.0",
+    "gql[all]>=4.0.0",
+    "strenum>=0.4.15",
 ]
 
 [tool.uv.sources]
