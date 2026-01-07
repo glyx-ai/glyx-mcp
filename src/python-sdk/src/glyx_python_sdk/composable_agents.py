@@ -8,9 +8,11 @@ from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
 from time import time
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Literal
 
 from supabase import create_client
+from fastmcp.exceptions import McpError
+from pydantic import BaseModel, Field, create_model
 
 from glyx_python_sdk.models.cursor import (
     BaseCursorEvent,
@@ -33,6 +35,9 @@ from glyx_python_sdk.exceptions import AgentConfigError
 from glyx_python_sdk.websocket_manager import broadcast_event
 
 logger = logging.getLogger(__name__)
+
+_FALSEY_STRINGS = {"0", "false", "no", "n", "off", ""}
+_TRUTHY_STRINGS = {"1", "true", "yes", "y", "on"}
 
 
 async def create_event(
@@ -115,6 +120,8 @@ class ComposableAgent:
         """Build CLI arguments from task config using ArgSpec definitions."""
         args: list[str] = []
 
+        resolved_config = self._resolve_values(task_config)
+
         # Separate positional and flag-based args
         positional_args = sorted(
             [a for a in self.config.args if a.positional],
@@ -124,9 +131,7 @@ class ComposableAgent:
 
         # Process positional args first (in order)
         for arg_spec in positional_args:
-            value = task_config.get(arg_spec.name)
-            value = value if value is not None else (os.environ.get(arg_spec.env_var) if arg_spec.env_var else None)
-            value = value if value is not None else (arg_spec.default if arg_spec.default else None)
+            value = resolved_config.get(arg_spec.name)
             if value is not None:
                 if arg_spec.choices and str(value) not in arg_spec.choices:
                     raise AgentConfigError(
@@ -136,9 +141,7 @@ class ComposableAgent:
 
         # Process flag-based args
         for arg_spec in flag_args:
-            value = task_config.get(arg_spec.name)
-            value = value if value is not None else (os.environ.get(arg_spec.env_var) if arg_spec.env_var else None)
-            value = value if value is not None else (arg_spec.default if arg_spec.default else None)
+            value = resolved_config.get(arg_spec.name)
 
             if value is None:
                 continue
@@ -155,7 +158,7 @@ class ComposableAgent:
             flag = arg_spec.flag
 
             if arg_spec.type == "bool":
-                if value:
+                if value is True:
                     args.append(flag)
             elif arg_spec.variadic and isinstance(value, list):
                 for v in value:
@@ -171,8 +174,121 @@ class ComposableAgent:
 
         return args
 
+    def _resolve_values(self, task_config: dict[str, Any]) -> dict[str, Any]:
+        resolved: dict[str, Any] = {}
+        for arg_spec in self.config.args:
+            raw_value = task_config.get(arg_spec.name)
+            if raw_value is None and arg_spec.env_var:
+                raw_value = os.environ.get(arg_spec.env_var)
+            if raw_value is None and arg_spec.default != "":
+                raw_value = arg_spec.default
+            resolved[arg_spec.name] = self._coerce_value(arg_spec, raw_value)
+        return resolved
+
+    def _coerce_value(self, arg_spec: ArgSpec, value: Any) -> Any:
+        if value is None:
+            return None
+
+        if arg_spec.variadic:
+            if isinstance(value, str):
+                items = [v.strip() for v in value.split(",") if v.strip()]
+            else:
+                items = value
+            item_spec = arg_spec.model_copy(update={"variadic": False})
+            return [self._coerce_value(item_spec, v) for v in items]
+
+        match arg_spec.type:
+            case "string":
+                return str(value)
+            case "bool":
+                if isinstance(value, bool):
+                    return value
+                if isinstance(value, str):
+                    normalized = value.strip().lower()
+                    if normalized in _FALSEY_STRINGS:
+                        return False
+                    if normalized in _TRUTHY_STRINGS:
+                        return True
+                return bool(value)
+            case "int":
+                return int(value)
+            case "float":
+                return float(value)
+
+        return value
+
+    def _is_missing_required_value(self, arg_spec: ArgSpec, value: Any) -> bool:
+        if value is None:
+            return True
+        if arg_spec.variadic and isinstance(value, list) and not value:
+            return True
+        if arg_spec.type == "string" and isinstance(value, str) and value.strip() == "":
+            return True
+        return False
+
+    def _annotation_for_argspec(self, arg_spec: ArgSpec) -> Any:
+        base: Any = {"string": str, "bool": bool, "int": int, "float": float}[arg_spec.type]
+
+        if arg_spec.choices:
+            base = Literal.__getitem__(tuple(str(c) for c in arg_spec.choices))
+        if arg_spec.variadic:
+            return list[base]
+        return base
+
+    async def _apply_jit_elicitation(self, task_config: dict[str, Any], ctx: Any | None) -> dict[str, Any]:
+        missing = []
+        resolved = self._resolve_values(task_config)
+        for arg_spec in self.config.args:
+            if not arg_spec.required:
+                continue
+            value = resolved.get(arg_spec.name)
+            if self._is_missing_required_value(arg_spec, value):
+                missing.append(arg_spec)
+
+        if not missing:
+            return task_config
+        if ctx is None:
+            missing_names = ", ".join(a.name for a in missing)
+            raise AgentConfigError(f"Missing required args for {self.config.agent_key}: {missing_names}")
+
+        fields: dict[str, tuple[Any, Any]] = {}
+        for arg_spec in missing:
+            annotation = self._annotation_for_argspec(arg_spec)
+            description_parts = [p for p in [arg_spec.description, f"type={arg_spec.type}"] if p]
+            if arg_spec.choices:
+                description_parts.append(f"choices={arg_spec.choices}")
+            fields[arg_spec.name] = (
+                annotation,
+                Field(..., description="; ".join(description_parts)),
+            )
+
+        ResponseModel: type[BaseModel] = create_model("GlyxElicitationResponse", **fields)  # type: ignore[arg-type]
+        prompt_lines = [f"{a.name}: {a.description or a.type}" for a in missing]
+        message = (
+            f"Additional input required to run `{self.config.agent_key}`.\n\n"
+            f"Please provide:\n- " + "\n- ".join(prompt_lines)
+        )
+
+        try:
+            response = await ctx.elicit(message=message, response_type=ResponseModel)
+        except McpError as e:
+            if "Method not found" in str(e):
+                missing_names = ", ".join(a.name for a in missing)
+                raise AgentConfigError(
+                    f"MCP client does not support elicitations. Provide required args explicitly: {missing_names}"
+                ) from e
+            raise
+
+        data = getattr(response, "data", None)
+        if data is None:
+            raise AgentConfigError(f"User cancelled elicitation for {self.config.agent_key}")
+
+        updates = data.model_dump()
+        return {**task_config, **updates}
+
     async def execute(self, task_config: dict[str, Any], timeout: int = 30, ctx=None) -> AgentResult:
         """Parse args and execute command, returning structured result."""
+        task_config = await self._apply_jit_elicitation(task_config, ctx)
         start_time = time()
         model = task_config.get("model", "gpt-5")
         logger.info(f"[AGENT EXECUTE] Starting execution for {self.config.agent_key} (model={model})")

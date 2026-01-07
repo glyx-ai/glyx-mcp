@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from glyx_python_sdk import AgentConfig, AgentResult, ArgSpec, ComposableAgent
+from glyx_python_sdk.exceptions import AgentConfigError
 
 
 @pytest.fixture
@@ -55,6 +56,32 @@ def failing_agent_config() -> AgentConfig:
 @pytest.mark.integration
 class TestComposableAgentExecution:
     """Integration tests for real subprocess execution."""
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_required_arg_raises(self, echo_agent_config: AgentConfig) -> None:
+        agent = ComposableAgent(echo_agent_config)
+        with pytest.raises(AgentConfigError):
+            await agent.execute({}, timeout=10)
+
+    @pytest.mark.asyncio
+    async def test_execute_missing_required_arg_elicited(self, echo_agent_config: AgentConfig) -> None:
+        agent = ComposableAgent(echo_agent_config)
+
+        class FakeResponse:
+            def __init__(self, data):
+                self.data = data
+
+        class FakeCtx:
+            async def elicit(self, message, response_type):
+                return FakeResponse(response_type(message="Hello from elicitation!"))
+
+            async def info(self, *args, **kwargs):
+                return None
+
+        result = await agent.execute({}, timeout=10, ctx=FakeCtx())
+
+        assert result.success is True
+        assert "Hello from elicitation!" in result.stdout
 
     @pytest.mark.asyncio
     async def test_execute_echo_command(self, echo_agent_config: AgentConfig) -> None:
