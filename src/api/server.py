@@ -28,7 +28,6 @@ logfire.configure(
     token=os.environ.get("LOGFIRE_TOKEN"),
     environment=os.environ.get("ENVIRONMENT", "development"),
 )
-logfire.instrument_logging()
 logfire.instrument_pydantic_ai()
 logfire.instrument_httpx(capture_all=True)
 
@@ -49,6 +48,7 @@ from api.routes import (  # noqa: E402
     linear,
     memory,
     organizations,
+    pair,
     root,
     sequences,
     streaming,
@@ -156,6 +156,7 @@ api_app.include_router(agents.router)
 api_app.include_router(deployments.router)
 api_app.include_router(github.router)
 api_app.include_router(linear.router)
+api_app.include_router(pair.router)
 
 # Register webhook routers
 github_webhook_router = create_github_webhook_router(
