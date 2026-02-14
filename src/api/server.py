@@ -6,6 +6,7 @@ import asyncio
 import importlib.util
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import glyx_python_sdk
@@ -28,7 +29,6 @@ logfire.configure(
     token=os.environ.get("LOGFIRE_TOKEN"),
     environment=os.environ.get("ENVIRONMENT", "development"),
 )
-logfire.instrument_logging()
 logfire.instrument_pydantic_ai()
 logfire.instrument_httpx(capture_all=True)
 
@@ -49,6 +49,7 @@ from api.routes import (  # noqa: E402
     linear,
     memory,
     organizations,
+    pair,
     root,
     sequences,
     streaming,
@@ -156,6 +157,7 @@ api_app.include_router(agents.router)
 api_app.include_router(deployments.router)
 api_app.include_router(github.router)
 api_app.include_router(linear.router)
+api_app.include_router(pair.router)
 
 # Register webhook routers
 github_webhook_router = create_github_webhook_router(
@@ -172,57 +174,88 @@ api_app.include_router(linear_webhook_router)
 health.set_agents_dir(agents_dir)
 
 
-# Create combined app for HTTP server (MCP + REST API)
-def create_combined_app() -> FastAPI:
-    """Create combined FastAPI app with MCP protocol and REST API routes."""
-    # Create MCP ASGI app with proper path
-    mcp_app = mcp.http_app(path="/mcp")
-
-    # Combine MCP and REST routes with proper lifespan
-    combined_app = FastAPI(
-        title="Glyx AI - MCP + REST API",
-        description=api_app.description,
-        version=api_app.version,
-        contact=api_app.contact,
-        license_info=api_app.license_info,
-        openapi_tags=api_app.openapi_tags,
-        routes=[
-            *mcp_app.routes,  # MCP protocol at /mcp
-            *api_app.routes,  # REST API routes
-        ],
-        lifespan=mcp_app.lifespan,  # Essential for MCP session management
-        docs_url="/docs",
-        redoc_url="/redoc",
-    )
-
-    # Exception handlers
-    @combined_app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        logger.error(f"[VALIDATION ERROR] {request.method} {request.url.path}")
-        for error in exc.errors():
-            logger.error(f"  {error['loc']}: {error['msg']} (type={error['type']})")
-        return JSONResponse(status_code=422, content={"detail": exc.errors()})
-
-    @combined_app.exception_handler(Exception)
-    async def general_exception_handler(request: Request, exc: Exception):
-        logger.exception(f"[UNHANDLED ERROR] {request.method} {request.url.path}: {exc}")
-        return JSONResponse(status_code=500, content={"detail": str(exc)})
-
-    # Add CORS middleware
-    combined_app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-        allow_origin_regex=r"^chrome-extension://.*$",
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    return combined_app
+# Create MCP ASGI app (path="/" means MCP handles root, we mount at /mcp)
+mcp_app = mcp.http_app(path="/")
 
 
-# Expose combined app for uvicorn
-combined_app = create_combined_app()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Custom lifespan that wraps MCP lifespan."""
+    async with mcp_app.lifespan(app):
+        yield
+
+
+# Create combined FastAPI app with custom lifespan
+combined_app = FastAPI(
+    title="Glyx AI - MCP + REST API",
+    description=api_app.description,
+    version=api_app.version,
+    contact=api_app.contact,
+    license_info=api_app.license_info,
+    openapi_tags=api_app.openapi_tags,
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# Add CORS middleware (must be before mounting)
+combined_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://glyx.ai",
+        "https://www.glyx.ai",
+    ],
+    allow_origin_regex=r"^(chrome-extension://.*|https://.*\.glyx\.ai)$",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Mcp-Session-Id"],  # Required for Streamable HTTP
+)
+
+# Mount MCP server at /mcp
+combined_app.mount("/mcp", mcp_app)
+
+# Include all API routers (preserves prefixes correctly)
+combined_app.include_router(root.router)
+combined_app.include_router(health.router)
+combined_app.include_router(streaming.router)
+combined_app.include_router(sequences.router)
+combined_app.include_router(workflows.router)
+combined_app.include_router(composable_workflows.router)
+combined_app.include_router(organizations.router)
+combined_app.include_router(tasks.router)
+combined_app.include_router(auth.router)
+combined_app.include_router(memory.router)
+combined_app.include_router(agents.router)
+combined_app.include_router(deployments.router)
+combined_app.include_router(github.router)
+combined_app.include_router(linear.router)
+combined_app.include_router(pair.router)
+combined_app.include_router(github_webhook_router)
+combined_app.include_router(linear_webhook_router)
+
+# Mount static files on combined app
+if static_path.exists():
+    combined_app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
+logfire.instrument_fastapi(combined_app)
+
+
+# Exception handlers
+@combined_app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"[VALIDATION ERROR] {request.method} {request.url.path}")
+    for error in exc.errors():
+        logger.error(f"  {error['loc']}: {error['msg']} (type={error['type']})")
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
+@combined_app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"[UNHANDLED ERROR] {request.method} {request.url.path}: {exc}")
+    return JSONResponse(status_code=500, content={"detail": str(exc)})
 
 
 async def main_http() -> None:

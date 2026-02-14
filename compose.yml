@@ -1,28 +1,40 @@
 services:
-  glyx-mcp:
-    labels:
-      - "glyx-mcp"
+  app:
+    container_name: glyx-mcp
     build:
       context: .
       dockerfile: Dockerfile
       target: dev
-      network: host
-    image: glyx:latest
-    container_name: glyx-mcp-server
-    stdin_open: true
-    tty: true
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    ports:
+      - "8080:8080"
     env_file:
       - .env
+    environment:
+      # AI Provider Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      # Supabase
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
+      # Memory
+      - MEM0_API_KEY=${MEM0_API_KEY:-}
+      # Observability
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # Server
+      - PORT=8080
     volumes:
-      # Mount your project directory so agents can edit files
-      - ${PROJECT_DIR:-.}:/workspace
-      # Mount source code for hot reloading (changes reflect immediately)
-      - ./src:/app/src
-      # Mount logs directory
-      - ./logs:/app/logs
+      - .:/app
+      - /app/.venv  # Don't mount venv, use container's
       # Mount Claude credentials for authentication
       - ${HOME}/.claude/.credentials.json:/root/.claude/.credentials.json:ro
-    working_dir: /app
+    command: uv run uvicorn api.server:combined_app --host 0.0.0.0 --port 8080 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
