@@ -91,6 +91,24 @@ variable "knock_api_key" {
   sensitive   = true
 }
 
+variable "langfuse_secret_key" {
+  description = "Langfuse secret key for observability"
+  type        = string
+  sensitive   = true
+}
+
+variable "langfuse_public_key" {
+  description = "Langfuse public key"
+  type        = string
+  sensitive   = true
+}
+
+variable "langfuse_base_url" {
+  description = "Langfuse API base URL"
+  type        = string
+  default     = "https://us.cloud.langfuse.com"
+}
+
 # =============================================================================
 # Resource Configuration
 # =============================================================================

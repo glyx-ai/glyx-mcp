@@ -174,6 +174,40 @@ resource "google_secret_manager_secret_version" "knock_api_key" {
   secret_data = var.knock_api_key
 }
 
+resource "google_secret_manager_secret" "langfuse_secret_key" {
+  secret_id = "langfuse-secret-key"
+
+  replication {
+    auto {}
+  }
+
+  labels = local.common_labels
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "langfuse_secret_key" {
+  secret      = google_secret_manager_secret.langfuse_secret_key.id
+  secret_data = var.langfuse_secret_key
+}
+
+resource "google_secret_manager_secret" "langfuse_public_key" {
+  secret_id = "langfuse-public-key"
+
+  replication {
+    auto {}
+  }
+
+  labels = local.common_labels
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "langfuse_public_key" {
+  secret      = google_secret_manager_secret.langfuse_public_key.id
+  secret_data = var.langfuse_public_key
+}
+
 # -----------------------------------------------------------------------------
 # Service Account - Cloud Run identity
 # -----------------------------------------------------------------------------
@@ -201,6 +235,8 @@ resource "google_secret_manager_secret_iam_member" "cloud_run_secrets" {
     google_secret_manager_secret.mem0_api_key,
     google_secret_manager_secret.logfire_token,
     google_secret_manager_secret.knock_api_key,
+    google_secret_manager_secret.langfuse_secret_key,
+    google_secret_manager_secret.langfuse_public_key,
   ]
 }
 

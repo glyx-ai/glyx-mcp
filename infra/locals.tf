@@ -17,7 +17,8 @@ locals {
   # Environment variables for Cloud Run
   # Note: PORT is reserved and auto-set by Cloud Run
   env_vars = {
-    ENVIRONMENT = var.environment
+    ENVIRONMENT       = var.environment
+    LANGFUSE_BASE_URL = var.langfuse_base_url
   }
 
   # Secret environment variables (references to Secret Manager)
@@ -31,5 +32,7 @@ locals {
     MEM0_API_KEY              = google_secret_manager_secret.mem0_api_key.secret_id
     LOGFIRE_TOKEN             = google_secret_manager_secret.logfire_token.secret_id
     KNOCK_API_KEY             = google_secret_manager_secret.knock_api_key.secret_id
+    LANGFUSE_SECRET_KEY       = google_secret_manager_secret.langfuse_secret_key.secret_id
+    LANGFUSE_PUBLIC_KEY       = google_secret_manager_secret.langfuse_public_key.secret_id
   }
 }
