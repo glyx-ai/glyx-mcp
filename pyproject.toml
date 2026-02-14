@@ -26,15 +26,14 @@ glyx-python-sdk = { path = "src/python-sdk", editable = true }
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.3.0",
+    "ruff>=0.8.0",
     "mypy>=1.9.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
     "pytest-httpx>=0.30.0",
     "pre-commit>=3.0.0",
-    "flake8>=7.0.0",
-    "black>=24.0.0",
+    "taskipy>=1.12.0",
 ]
 
 [project.scripts]
@@ -52,9 +51,53 @@ dev = [
     "pytest-httpx>=0.35.0",
 ]
 
+[tool.taskipy.tasks]
+# Development
+dev = "docker compose up"
+dev-build = "docker compose up --build"
+server = "uv run uvicorn api.server:combined_app --host 0.0.0.0 --port 8080 --reload"
+
+# Testing
+test = "pytest tests/ -v"
+test-unit = "pytest tests/unit/ -v -n auto"
+test-integration = "pytest tests/integration/ -v -s -m integration"
+test-cov = "pytest tests/ -v --cov=glyx_mcp --cov=api"
+
+# Linting
+lint = "ruff check . && ruff format --check ."
+lint-fix = "ruff check --fix . && ruff format ."
+
+# Docker
+docker-build = "docker build -t glyx-mcp:latest --target production ."
+docker-run = "docker run -p 8080:8080 --env-file .env glyx-mcp:latest"
+
+# Infrastructure (Terraform)
+infra-init = "cd infra && terraform init"
+infra-plan = "cd infra && terraform plan"
+infra-apply = "cd infra && terraform apply"
+infra-destroy = "cd infra && terraform destroy"
+infra-output = "cd infra && terraform output"
+
+# Deployment workflow
+deploy-build = "docker build -t $(cd infra && terraform output -raw image_url):latest --target production ."
+deploy-push = "docker push $(cd infra && terraform output -raw image_url):latest"
+deploy = "cd infra && terraform apply -auto-approve"
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "W",   # pycodestyle warnings
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+]
 
 [tool.mypy]
 python_version = "3.11"
@@ -62,3 +105,17 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "integration: marks tests as integration tests (require external services)",
+]
+asyncio_mode = "auto"
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(levelname)s | %(asctime)s | %(name)s | %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"

@@ -1,36 +1,18 @@
+# syntax=docker/dockerfile:1.4
 # =============================================================================
-# Builder stage - installs dependencies
+# Glyx MCP Server - Multi-stage Docker build
 # =============================================================================
-FROM python:3.12-slim as builder
-
-WORKDIR /app
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv for faster package management
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:$PATH"
-
-# Copy dependency files first (for better caching)
-COPY pyproject.toml README.md ./
-COPY packages/ ./packages/
-
-# Install Python dependencies (production only, no dev deps)
-RUN uv pip install --system --no-cache .
 
 # =============================================================================
-# Development stage - includes dev dependencies and tools
+# Development stage - includes dev dependencies and hot reload
 # =============================================================================
-FROM python:3.12-slim as dev
+FROM python:3.12-slim AS dev
 
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
+    apt-get install -y --no-install-recommends \
     git \
     curl \
     unzip \
@@ -38,17 +20,15 @@ RUN apt-get update && apt-get install -y \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:$PATH"
+# Copy uv binary from official image
+COPY --from=ghcr.io/astral-sh/uv:0.9.24 /uv /uvx /bin/
 
 # Copy project files
 COPY pyproject.toml README.md ./
-COPY packages/ ./packages/
 COPY src/ ./src/
 
-# Install with dev dependencies
-RUN uv pip install --system -e ".[dev]"
+# Install dependencies with dev extras
+RUN uv sync --all-extras || uv sync
 
 # Install agent CLIs
 RUN curl -fsSL https://opencode.ai/install | bash
@@ -63,21 +43,25 @@ RUN curl -fsSL https://cursor.com/install | bash && \
 # Create directories
 RUN mkdir -p /root/.claude /root/.cursor-agent
 
-# Port configuration
-ENV PORT=8080
+# Set environment
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8080
+
 EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:${PORT}/api/healthz || exit 1
 
-# Run HTTP server (development mode)
-CMD ["glyx-mcp-http"]
+# Development command with hot reload
+CMD ["uv", "run", "uvicorn", "api.server:combined_app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
 
 # =============================================================================
 # Production stage - optimized, minimal, secure
 # =============================================================================
-FROM python:3.12-slim as production
+FROM python:3.12-slim AS production
 
 # Create non-root user for security
 RUN groupadd -r glyx && useradd -r -g glyx glyx
@@ -85,7 +69,8 @@ RUN groupadd -r glyx && useradd -r -g glyx glyx
 WORKDIR /app
 
 # Install runtime dependencies only
-RUN apt-get update && apt-get install -y \
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
+    apt-get install -y --no-install-recommends \
     git \
     curl \
     unzip \
@@ -93,18 +78,15 @@ RUN apt-get update && apt-get install -y \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:$PATH"
+# Copy uv binary from official image
+COPY --from=ghcr.io/astral-sh/uv:0.9.24 /uv /uvx /bin/
 
-# Copy Python packages from builder
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy project files
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
 
-# Copy application code
-COPY --chown=glyx:glyx pyproject.toml README.md ./
-COPY --chown=glyx:glyx packages/ ./packages/
-COPY --chown=glyx:glyx glyx/ ./glyx/
+# Install production dependencies only (no dev extras)
+RUN uv sync --no-dev || uv sync
 
 # Install agent CLIs
 RUN curl -fsSL https://opencode.ai/install | bash
@@ -116,12 +98,17 @@ RUN curl -fsSL https://cursor.com/install | bash && \
     ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent && \
     cursor-agent --version || echo "cursor-agent installed"
 
-# Create necessary directories
-RUN mkdir -p /app/logs /app/.data /root/.claude /root/.cursor-agent && \
-    chown -R glyx:glyx /app/logs /app/.data
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/logs /app/.data /home/glyx/.cache/uv /home/glyx/.claude /home/glyx/.cursor-agent && \
+    chown -R glyx:glyx /app /home/glyx
 
-# Port configuration
-ENV PORT=8080
+# Set environment
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_CACHE_DIR=/home/glyx/.cache/uv \
+    PORT=8080
+
 EXPOSE 8080
 
 # Health check
@@ -131,5 +118,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Switch to non-root user
 USER glyx
 
-# Run HTTP server (production mode)
-CMD ["python", "-m", "uvicorn", "api.server:combined_app", "--host", "0.0.0.0", "--port", "8080"]
+# Production command - use --no-sync to skip re-syncing at runtime
+CMD ["uv", "run", "--no-sync", "uvicorn", "api.server:combined_app", "--host", "0.0.0.0", "--port", "8080"]

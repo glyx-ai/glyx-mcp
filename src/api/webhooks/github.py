@@ -52,7 +52,6 @@ async def create_activity(
     logger.info(f"Created activity: {event_type} by {actor}")
 
     # Send notification
-    # Send notification
     payload = GitHubNotificationPayload(
         event_type=event_type,
         actor=actor,
@@ -60,7 +59,6 @@ async def create_activity(
         content=content,
         metadata=metadata,
     )
-    # Assuming 'github-activity' workflow exists in Knock
     knock_client.workflows.trigger(
         key="github-activity",
         recipients=["github-channel"],
