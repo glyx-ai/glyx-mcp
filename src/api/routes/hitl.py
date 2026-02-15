@@ -77,6 +77,10 @@ class HITLStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+# HITL expiration configuration: 5 minutes (matches table default)
+HITL_EXPIRATION_MINUTES = 5
+
+
 class CreateHITLRequest(BaseModel):
     """Request body for creating a HITL request."""
 
@@ -287,6 +291,100 @@ async def get_hitl_request(hitl_id: str) -> HITLRequestResponse:
         created_at=req["created_at"],
         responded_at=req.get("responded_at"),
         expires_at=req["expires_at"],
+    )
+
+
+class HITLExpirationCheckResponse(BaseModel):
+    """Response from HITL expiration check endpoint."""
+
+    expired_count: int
+    hitl_ids: list[str]
+    task_ids: list[str]
+
+
+@router.post(
+    "/expiration-check",
+    summary="Check and Mark Expired HITL Requests",
+    description="""
+Mark stale HITL requests as expired and fail their associated tasks.
+
+HITL requests are considered expired if:
+- Status is 'pending'
+- expires_at timestamp has passed
+
+When a HITL request expires:
+1. The HITL request status is set to 'expired'
+2. The associated task status is set to 'failed'
+3. The task error is set to indicate expiration
+
+This ensures agents don't block indefinitely waiting for user input.
+Call this endpoint periodically (e.g., every minute) via cron or iOS app.
+
+Returns the count and IDs of HITL requests and tasks that were expired.
+    """,
+    response_model=HITLExpirationCheckResponse,
+)
+async def check_hitl_expirations() -> HITLExpirationCheckResponse:
+    """Check for expired HITL requests and fail their tasks."""
+    supabase = _get_supabase()
+
+    now_iso = datetime.now(UTC).isoformat()
+
+    # Find expired HITL requests: pending with expires_at < now
+    expired_query = (
+        supabase.table("hitl_requests")
+        .select("id, task_id, user_id, prompt")
+        .eq("status", HITLStatus.PENDING.value)
+        .lt("expires_at", now_iso)
+    )
+
+    expired_result = expired_query.execute()
+    expired_requests = expired_result.data if expired_result.data else []
+
+    if not expired_requests:
+        return HITLExpirationCheckResponse(
+            expired_count=0,
+            hitl_ids=[],
+            task_ids=[],
+        )
+
+    # Mark each expired HITL request and fail its task
+    expired_hitl_ids: list[str] = []
+    expired_task_ids: list[str] = []
+
+    for hitl in expired_requests:
+        hitl_id = hitl["id"]
+        task_id = hitl["task_id"]
+        prompt = hitl.get("prompt", "")[:100]  # Truncate for error message
+
+        # Mark HITL request as expired
+        supabase.table("hitl_requests").update({
+            "status": HITLStatus.EXPIRED.value,
+        }).eq("id", hitl_id).execute()
+
+        # Fail the associated task with expiration error
+        error_msg = (
+            f"HITL request expired: User did not respond within "
+            f"{HITL_EXPIRATION_MINUTES} minutes. Prompt: {prompt}..."
+        )
+        supabase.table("agent_tasks").update({
+            "status": "failed",
+            "error": error_msg,
+            "completed_at": now_iso,
+            "updated_at": now_iso,
+        }).eq("id", task_id).execute()
+
+        expired_hitl_ids.append(hitl_id)
+        expired_task_ids.append(task_id)
+
+        logger.info(
+            f"HITL request {hitl_id} expired, task {task_id} marked as failed"
+        )
+
+    return HITLExpirationCheckResponse(
+        expired_count=len(expired_hitl_ids),
+        hitl_ids=expired_hitl_ids,
+        task_ids=expired_task_ids,
     )
 
 
