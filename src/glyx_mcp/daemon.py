@@ -24,6 +24,8 @@ from typing import Any
 
 import httpx
 from glyx_python_sdk.settings import settings
+from supabase._async.client import AsyncClient
+from supabase._async.client import create_client as create_async_client
 
 from supabase import Client, create_client
 
@@ -273,19 +275,26 @@ class GlyxDaemon:
     ):
         self.device_id = device_id
         self.api_base_url = api_base_url or os.environ.get("GLYX_API_URL", "https://glyx-mcp.onrender.com")
-        self.supabase: Client | None = None
+        self.supabase: AsyncClient | None = None
+        self.supabase_sync: Client | None = None  # For polling
         self.executor = TaskExecutor(self.api_base_url)
         self.running = False
         self.task_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
-    def _create_supabase_client(self) -> Client:
-        """Create Supabase client using settings."""
+    async def _create_supabase_client(self) -> AsyncClient:
+        """Create async Supabase client for Realtime."""
         url = settings.supabase_url
         key = settings.supabase_service_role_key or settings.supabase_anon_key
 
         if not url or not key:
             raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY/SUPABASE_ANON_KEY")
 
+        return await create_async_client(url, key)
+
+    def _create_sync_client(self) -> Client:
+        """Create sync Supabase client for polling."""
+        url = settings.supabase_url
+        key = settings.supabase_service_role_key or settings.supabase_anon_key
         return create_client(url, key)
 
     def _on_task_insert(self, payload: dict[str, Any]) -> None:
@@ -340,7 +349,7 @@ class GlyxDaemon:
         """Poll for any pending tasks that might have been missed."""
         try:
             result = (
-                self.supabase.table("agent_tasks")
+                self.supabase_sync.table("agent_tasks")
                 .select("*")
                 .eq("device_id", self.device_id)
                 .eq("status", "pending")
@@ -358,24 +367,20 @@ class GlyxDaemon:
         except Exception as e:
             logger.error(f"Error polling pending tasks: {e}")
 
-    def subscribe_to_tasks(self) -> Any:
+    async def subscribe_to_tasks(self) -> Any:
         """Subscribe to Realtime for task insertions."""
         channel_name = f"daemon-{self.device_id}"
         channel = self.supabase.channel(channel_name)
 
         # Subscribe to INSERT events on agent_tasks
-        # Filter for this device's tasks
-        channel.on(
-            "postgres_changes",
-            {
-                "event": "INSERT",
-                "schema": "public",
-                "table": "agent_tasks",
-            },
-            self._on_task_insert,
+        channel.on_postgres_changes(
+            event="INSERT",
+            schema="public",
+            table="agent_tasks",
+            callback=self._on_task_insert,
         )
 
-        channel.subscribe()
+        await channel.subscribe()
         logger.info(f"Subscribed to Realtime channel: {channel_name}")
         return channel
 
@@ -384,11 +389,12 @@ class GlyxDaemon:
         logger.info(f"Starting Glyx Daemon for device: {self.device_id}")
         logger.info(f"API base URL: {self.api_base_url}")
 
-        self.supabase = self._create_supabase_client()
+        self.supabase = await self._create_supabase_client()
+        self.supabase_sync = self._create_sync_client()
         self.running = True
 
         # Subscribe to Realtime (channel kept alive by reference)
-        self._channel = self.subscribe_to_tasks()
+        self._channel = await self.subscribe_to_tasks()
 
         # Small delay to ensure subscription is active
         await asyncio.sleep(1.0)
@@ -441,17 +447,21 @@ def _register_device(user_id: str) -> str | None:
     hostname = _get_hostname()
 
     # Check if device already exists for this user/hostname
-    existing = (
-        supabase.table("paired_devices")
-        .select("id")
-        .eq("user_id", user_id)
-        .eq("hostname", hostname)
-        .maybe_single()
-        .execute()
-    )
+    try:
+        existing = (
+            supabase.table("paired_devices")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("hostname", hostname)
+            .limit(1)
+            .execute()
+        )
+    except Exception as e:
+        logger.error(f"Error checking for existing device: {e}")
+        existing = None
 
-    if existing.data:
-        device_id = existing.data["id"]
+    if existing and existing.data:
+        device_id = existing.data[0]["id"]
         logger.info(f"Found existing device: {device_id}")
         return device_id
 
@@ -463,6 +473,7 @@ def _register_device(user_id: str) -> str | None:
         "name": f"Daemon on {hostname}",
         "hostname": hostname,
         "status": "active",
+        "relay_url": "local://daemon",  # Daemon doesn't use relay, executes locally
     }
 
     result = supabase.table("paired_devices").insert(device_data).execute()
@@ -475,6 +486,20 @@ def _register_device(user_id: str) -> str | None:
         return None
 
 
+def _load_device_id_from_file() -> str | None:
+    """Load device ID from ~/.glyx/device_id (created by glyx-pair script)."""
+    device_id_file = os.path.expanduser("~/.glyx/device_id")
+    try:
+        if os.path.exists(device_id_file):
+            with open(device_id_file) as f:
+                device_id = f.read().strip()
+                if device_id:
+                    return device_id
+    except Exception as e:
+        logger.debug(f"Could not read device ID from file: {e}")
+    return None
+
+
 def main() -> int:
     """Entry point for glyx-daemon CLI."""
     parser = argparse.ArgumentParser(
@@ -483,7 +508,7 @@ def main() -> int:
     parser.add_argument(
         "--device-id",
         default=os.environ.get("GLYX_DEVICE_ID"),
-        help="Device ID to listen for tasks (default: GLYX_DEVICE_ID env var)",
+        help="Device ID to listen for tasks (default: ~/.glyx/device_id or GLYX_DEVICE_ID env var)",
     )
     parser.add_argument(
         "--api-url",
@@ -508,7 +533,13 @@ def main() -> int:
 
     device_id = args.device_id
 
-    # Handle auto-registration
+    # Try loading from ~/.glyx/device_id if not provided
+    if not device_id:
+        device_id = _load_device_id_from_file()
+        if device_id:
+            logger.info(f"Loaded device ID from ~/.glyx/device_id: {device_id}")
+
+    # Handle auto-registration (deprecated - use glyx-pair instead)
     if args.register:
         device_id = _register_device(args.register)
         if not device_id:
@@ -519,23 +550,27 @@ def main() -> int:
 
     if not device_id:
         print(
-            "Error: --device-id required or set GLYX_DEVICE_ID environment variable",
+            "Error: No device ID found.",
             file=sys.stderr,
         )
         print(
-            "\nOptions:",
+            "\nTo pair this device:",
             file=sys.stderr,
         )
         print(
-            "  1. Use --register USER_ID to auto-register this machine",
+            "  1. Run 'glyx-pair' to generate a QR code",
             file=sys.stderr,
         )
         print(
-            "  2. Set GLYX_DEVICE_ID to an existing device ID",
+            "  2. Scan the QR code with the Glyx iOS app",
             file=sys.stderr,
         )
         print(
-            "  3. Pair via QR code from the iOS app",
+            "  3. Run 'glyx-daemon' again",
+            file=sys.stderr,
+        )
+        print(
+            "\nOr set GLYX_DEVICE_ID environment variable manually.",
             file=sys.stderr,
         )
         return 1
