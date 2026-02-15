@@ -40,6 +40,7 @@ mcp = _mcp_server_module.mcp
 
 # Import API routes (after dynamic mcp module load)
 from api.routes import (  # noqa: E402
+    agent_tasks,
     agents,
     auth,
     composable_workflows,
@@ -151,6 +152,7 @@ api_app.include_router(workflows.router)
 api_app.include_router(composable_workflows.router)
 api_app.include_router(organizations.router)
 api_app.include_router(tasks.router)
+api_app.include_router(agent_tasks.router)
 api_app.include_router(auth.router)
 api_app.include_router(memory.router)
 api_app.include_router(agents.router)
@@ -226,6 +228,7 @@ combined_app.include_router(workflows.router)
 combined_app.include_router(composable_workflows.router)
 combined_app.include_router(organizations.router)
 combined_app.include_router(tasks.router)
+combined_app.include_router(agent_tasks.router)
 combined_app.include_router(auth.router)
 combined_app.include_router(memory.router)
 combined_app.include_router(agents.router)
