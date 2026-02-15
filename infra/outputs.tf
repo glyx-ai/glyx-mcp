@@ -37,13 +37,5 @@ output "api_docs_url" {
   value       = "${google_cloud_run_v2_service.glyx_mcp.uri}/docs"
 }
 
-# GitHub Actions CI/CD outputs (only when WIF is enabled)
-output "github_actions_workload_identity_provider" {
-  description = "Workload Identity Provider for GitHub Actions (set as GCP_WORKLOAD_IDENTITY_PROVIDER secret)"
-  value       = var.enable_github_actions_wif ? google_iam_workload_identity_pool_provider.github[0].name : null
-}
-
-output "github_actions_service_account" {
-  description = "Service account for GitHub Actions (set as GCP_SERVICE_ACCOUNT secret)"
-  value       = var.enable_github_actions_wif ? google_service_account.github_actions[0].email : null
-}
+# NOTE: GitHub Actions WIF resources are managed outside Terraform.
+# See main.tf comments for required IAM roles.
