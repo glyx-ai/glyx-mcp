@@ -54,7 +54,25 @@ jobs:
 
       - name: Terraform Apply
         working-directory: infra
-        run: terraform apply -auto-approve -lock-timeout=2m
+        run: |
+          terraform apply -auto-approve -lock-timeout=2m \
+            -target=google_cloud_run_v2_service.glyx_mcp \
+            -target=google_cloud_run_v2_service_iam_member.public \
+            -target=google_artifact_registry_repository.glyx \
+            -target=google_secret_manager_secret.anthropic_api_key \
+            -target=google_secret_manager_secret.openai_api_key \
+            -target=google_secret_manager_secret.openrouter_api_key \
+            -target=google_secret_manager_secret.supabase_url \
+            -target=google_secret_manager_secret.supabase_anon_key \
+            -target=google_secret_manager_secret.supabase_service_role_key \
+            -target=google_secret_manager_secret.mem0_api_key \
+            -target=google_secret_manager_secret.logfire_token \
+            -target=google_secret_manager_secret.knock_api_key \
+            -target=google_secret_manager_secret.langfuse_secret_key \
+            -target=google_secret_manager_secret.langfuse_public_key \
+            -target=google_service_account.cloud_run \
+            -target=google_secret_manager_secret_iam_member.cloud_run_secrets \
+            -target=google_artifact_registry_repository_iam_member.cloud_run
         env:
           TF_VAR_project_id: ${{ env.PROJECT_ID }}
           TF_VAR_image_tag: ${{ github.sha }}
