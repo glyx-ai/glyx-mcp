@@ -153,18 +153,6 @@ variable "concurrency" {
 # CI/CD Configuration
 # =============================================================================
 
-variable "github_repo" {
-  description = "GitHub repository (owner/repo) for Workload Identity Federation"
-  type        = string
-  default     = "glyx-ai/glyx-mcp"
-}
-
-variable "enable_github_actions_wif" {
-  description = "Enable Workload Identity Federation for GitHub Actions (requires IAM admin permissions)"
-  type        = bool
-  default     = false
-}
-
 variable "image_tag" {
   description = "Docker image tag (commit SHA for CI, 'latest' for local)"
   type        = string
