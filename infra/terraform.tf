@@ -30,16 +30,6 @@ provider "google" {
   # - CI: Workload Identity Federation
 }
 
-# Enable required APIs
-resource "google_project_service" "apis" {
-  for_each = toset([
-    "run.googleapis.com",
-    "artifactregistry.googleapis.com",
-    "secretmanager.googleapis.com",
-    "cloudbuild.googleapis.com",
-    "iamcredentials.googleapis.com",
-  ])
-
-  service            = each.value
-  disable_on_destroy = false
-}
+# NOTE: Required APIs (run, artifactregistry, secretmanager, cloudbuild, iamcredentials)
+# are managed outside Terraform. The GitHub Actions SA lacks serviceusage.services.list
+# permission, so we can't manage these from CI. They're already enabled and won't change.

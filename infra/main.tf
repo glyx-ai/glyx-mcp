@@ -14,8 +14,7 @@ resource "google_artifact_registry_repository" "glyx" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 # -----------------------------------------------------------------------------
 # Secret Manager - Secure storage for API keys
@@ -30,8 +29,7 @@ resource "google_secret_manager_secret" "anthropic_api_key" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "anthropic_api_key" {
   secret      = google_secret_manager_secret.anthropic_api_key.id
@@ -47,8 +45,7 @@ resource "google_secret_manager_secret" "openai_api_key" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "openai_api_key" {
   secret      = google_secret_manager_secret.openai_api_key.id
@@ -64,8 +61,7 @@ resource "google_secret_manager_secret" "openrouter_api_key" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "openrouter_api_key" {
   secret      = google_secret_manager_secret.openrouter_api_key.id
@@ -81,8 +77,7 @@ resource "google_secret_manager_secret" "supabase_url" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "supabase_url" {
   secret      = google_secret_manager_secret.supabase_url.id
@@ -98,8 +93,7 @@ resource "google_secret_manager_secret" "supabase_anon_key" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "supabase_anon_key" {
   secret      = google_secret_manager_secret.supabase_anon_key.id
@@ -115,8 +109,7 @@ resource "google_secret_manager_secret" "supabase_service_role_key" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "supabase_service_role_key" {
   secret      = google_secret_manager_secret.supabase_service_role_key.id
@@ -132,8 +125,7 @@ resource "google_secret_manager_secret" "mem0_api_key" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "mem0_api_key" {
   secret      = google_secret_manager_secret.mem0_api_key.id
@@ -149,8 +141,7 @@ resource "google_secret_manager_secret" "logfire_token" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "logfire_token" {
   secret      = google_secret_manager_secret.logfire_token.id
@@ -166,8 +157,7 @@ resource "google_secret_manager_secret" "knock_api_key" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "knock_api_key" {
   secret      = google_secret_manager_secret.knock_api_key.id
@@ -183,8 +173,7 @@ resource "google_secret_manager_secret" "langfuse_secret_key" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "langfuse_secret_key" {
   secret      = google_secret_manager_secret.langfuse_secret_key.id
@@ -200,8 +189,7 @@ resource "google_secret_manager_secret" "langfuse_public_key" {
 
   labels = local.common_labels
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_secret_manager_secret_version" "langfuse_public_key" {
   secret      = google_secret_manager_secret.langfuse_public_key.id
@@ -359,8 +347,7 @@ resource "google_iam_workload_identity_pool" "github" {
   display_name              = "GitHub Actions"
   description               = "Workload Identity Pool for GitHub Actions CI/CD"
 
-  depends_on = [google_project_service.apis]
-}
+  }
 
 resource "google_iam_workload_identity_pool_provider" "github" {
   count = var.enable_github_actions_wif ? 1 : 0

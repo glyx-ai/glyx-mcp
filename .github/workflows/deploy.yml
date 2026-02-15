@@ -54,29 +54,10 @@ jobs:
 
       - name: Terraform Apply
         working-directory: infra
-        run: |
-          terraform apply -auto-approve -lock-timeout=2m \
-            -target=google_cloud_run_v2_service.glyx_mcp \
-            -target=google_cloud_run_v2_service_iam_member.public \
-            -target=google_artifact_registry_repository.glyx \
-            -target=google_secret_manager_secret.anthropic_api_key \
-            -target=google_secret_manager_secret.openai_api_key \
-            -target=google_secret_manager_secret.openrouter_api_key \
-            -target=google_secret_manager_secret.supabase_url \
-            -target=google_secret_manager_secret.supabase_anon_key \
-            -target=google_secret_manager_secret.supabase_service_role_key \
-            -target=google_secret_manager_secret.mem0_api_key \
-            -target=google_secret_manager_secret.logfire_token \
-            -target=google_secret_manager_secret.knock_api_key \
-            -target=google_secret_manager_secret.langfuse_secret_key \
-            -target=google_secret_manager_secret.langfuse_public_key \
-            -target=google_service_account.cloud_run \
-            -target=google_secret_manager_secret_iam_member.cloud_run_secrets \
-            -target=google_artifact_registry_repository_iam_member.cloud_run
+        run: terraform apply -auto-approve -lock-timeout=2m
         env:
           TF_VAR_project_id: ${{ env.PROJECT_ID }}
           TF_VAR_image_tag: ${{ github.sha }}
-          TF_VAR_enable_github_actions_wif: "true"
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
