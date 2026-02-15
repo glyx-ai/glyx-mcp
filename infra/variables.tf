@@ -164,3 +164,9 @@ variable "enable_github_actions_wif" {
   type        = bool
   default     = false
 }
+
+variable "image_tag" {
+  description = "Docker image tag (commit SHA for CI, 'latest' for local)"
+  type        = string
+  default     = "latest"
+}

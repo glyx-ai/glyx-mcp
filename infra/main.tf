@@ -267,7 +267,7 @@ resource "google_cloud_run_v2_service" "glyx_mcp" {
     timeout = "${var.timeout}s"
 
     containers {
-      image = "${local.image_name}:latest"
+      image = "${local.image_name}:${var.image_tag}"
 
       ports {
         container_port = 8080
