@@ -17,10 +17,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from supabase import create_client
+from glyx_python_sdk.settings import settings
 
 from api.webhooks import create_github_webhook_router, create_linear_webhook_router
-from glyx_python_sdk.settings import settings
+from supabase import create_client
 
 # Configure Logfire early, before any instrumentation
 logfire.configure(
@@ -47,6 +47,7 @@ from api.routes import (  # noqa: E402
     deployments,
     github,
     health,
+    hitl,
     linear,
     memory,
     organizations,
@@ -153,6 +154,7 @@ api_app.include_router(composable_workflows.router)
 api_app.include_router(organizations.router)
 api_app.include_router(tasks.router)
 api_app.include_router(agent_tasks.router)
+api_app.include_router(hitl.router)
 api_app.include_router(auth.router)
 api_app.include_router(memory.router)
 api_app.include_router(agents.router)
@@ -229,6 +231,7 @@ combined_app.include_router(composable_workflows.router)
 combined_app.include_router(organizations.router)
 combined_app.include_router(tasks.router)
 combined_app.include_router(agent_tasks.router)
+combined_app.include_router(hitl.router)
 combined_app.include_router(auth.router)
 combined_app.include_router(memory.router)
 combined_app.include_router(agents.router)
