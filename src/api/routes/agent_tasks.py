@@ -234,6 +234,169 @@ class TimeoutCheckResponse(BaseModel):
     task_ids: list[str]
 
 
+class CancelTaskResponse(BaseModel):
+    """Response from cancel task endpoint."""
+
+    task_id: str
+    status: str
+    cancelled_at: str
+
+
+@router.post(
+    "/{task_id}/cancel",
+    summary="Cancel a Running Task",
+    description="""
+Cancel a task that is currently pending or running.
+
+Only tasks in 'pending' or 'running' status can be cancelled.
+Already completed, failed, or cancelled tasks will return a 400 error.
+
+Returns the updated task status.
+    """,
+    response_model=CancelTaskResponse,
+)
+async def cancel_task(task_id: str) -> CancelTaskResponse:
+    """Cancel a running or pending task."""
+    supabase = _get_supabase()
+
+    # Fetch current task
+    task_result = (
+        supabase.table("agent_tasks")
+        .select("id, status")
+        .eq("id", task_id)
+        .maybe_single()
+        .execute()
+    )
+
+    if not task_result.data:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task = task_result.data
+    current_status = task.get("status")
+
+    # Only allow cancelling pending or running tasks
+    cancellable_statuses = (TaskStatus.PENDING.value, TaskStatus.RUNNING.value)
+    if current_status not in cancellable_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel task in '{current_status}' status. "
+                   f"Only pending or running tasks can be cancelled.",
+        )
+
+    # Update task to cancelled
+    now_iso = datetime.now(UTC).isoformat()
+    result = (
+        supabase.table("agent_tasks")
+        .update({
+            "status": TaskStatus.CANCELLED.value,
+            "completed_at": now_iso,
+            "updated_at": now_iso,
+        })
+        .eq("id", task_id)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to cancel task")
+
+    logger.info(f"Task {task_id} cancelled by user")
+
+    return CancelTaskResponse(
+        task_id=task_id,
+        status=TaskStatus.CANCELLED.value,
+        cancelled_at=now_iso,
+    )
+
+
+class RetryTaskResponse(BaseModel):
+    """Response from retry task endpoint."""
+
+    original_task_id: str
+    new_task_id: str
+    status: str
+    created_at: str
+
+
+@router.post(
+    "/{task_id}/retry",
+    summary="Retry a Failed Task",
+    description="""
+Retry a task that has failed, timed out, or was cancelled.
+
+Creates a new task with the same parameters (device_id, agent_type, payload)
+as the original task. The original task remains unchanged.
+
+Only tasks in 'failed', 'timeout', or 'cancelled' status can be retried.
+    """,
+    response_model=RetryTaskResponse,
+)
+async def retry_task(task_id: str) -> RetryTaskResponse:
+    """Retry a failed, timed out, or cancelled task."""
+    supabase = _get_supabase()
+
+    # Fetch original task
+    task_result = (
+        supabase.table("agent_tasks")
+        .select("*")
+        .eq("id", task_id)
+        .maybe_single()
+        .execute()
+    )
+
+    if not task_result.data:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task = task_result.data
+    current_status = task.get("status")
+
+    # Only allow retrying failed/timeout/cancelled tasks
+    retryable_statuses = (
+        TaskStatus.FAILED.value,
+        TaskStatus.TIMEOUT.value,
+        TaskStatus.CANCELLED.value,
+    )
+    if current_status not in retryable_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot retry task in '{current_status}' status. "
+                   f"Only failed, timed out, or cancelled tasks can be retried.",
+        )
+
+    # Create new task with same parameters
+    now_iso = datetime.now(UTC).isoformat()
+    new_task_data = {
+        "user_id": task["user_id"],
+        "device_id": task["device_id"],
+        "agent_type": task["agent_type"],
+        "task_type": task.get("task_type", "prompt"),
+        "payload": task["payload"],
+        "status": TaskStatus.PENDING.value,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+
+    result = (
+        supabase.table("agent_tasks")
+        .insert(new_task_data)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to create retry task")
+
+    new_task = result.data[0]
+    new_task_id = new_task["id"]
+
+    logger.info(f"Task {task_id} retried as new task {new_task_id}")
+
+    return RetryTaskResponse(
+        original_task_id=task_id,
+        new_task_id=new_task_id,
+        status=TaskStatus.PENDING.value,
+        created_at=now_iso,
+    )
+
+
 @router.post(
     "/timeout-check",
     summary="Check and Mark Timed Out Tasks",
