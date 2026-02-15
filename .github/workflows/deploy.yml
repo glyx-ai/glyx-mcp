@@ -58,6 +58,7 @@ jobs:
         env:
           TF_VAR_project_id: ${{ env.PROJECT_ID }}
           TF_VAR_image_tag: ${{ github.sha }}
+          TF_VAR_enable_github_actions_wif: "true"
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_openrouter_api_key: ${{ secrets.OPENROUTER_API_KEY }}
