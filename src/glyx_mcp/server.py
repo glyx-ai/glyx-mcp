@@ -7,9 +7,9 @@ import os
 from typing import Optional
 
 from fastmcp import FastMCP
-from fastmcp.server.auth.providers.jwt import JWTVerifier
-from fastmcp.server.dependencies import get_access_token
+from fastmcp.server.auth import TokenVerifier, AccessToken
 from fastmcp.utilities.logging import get_logger
+from supabase import create_client
 
 from glyx_python_sdk import discover_and_register_agents, search_memory, save_memory
 from glyx_python_sdk.tools.interact_with_user import ask_user
@@ -24,25 +24,49 @@ from glyx_python_sdk.tools.device_dispatch import (
     get_device_status as _get_device_status,
     get_task_status as _get_task_status,
 )
+from fastmcp.server.dependencies import get_access_token
 
 logger = logging.getLogger(__name__)
 
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://vpopliwokdmpxhmippwc.supabase.co")
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+
 
 def _get_user_id() -> Optional[str]:
-    """Get user_id from JWT claims via FastMCP auth."""
+    """Get user_id from validated access token."""
     token = get_access_token()
     if token and token.claims:
         return token.claims.get("sub")
     return None
 
 
-# Supabase JWT verification
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://vpopliwokdmpxhmippwc.supabase.co")
-auth = JWTVerifier(
-    jwks_uri=f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json",
-    issuer=f"{SUPABASE_URL}/auth/v1",
-    audience="authenticated",
-)
+class SupabaseTokenVerifier(TokenVerifier):
+    """Token verifier that validates via Supabase auth.get_user()."""
+
+    async def verify_token(self, token: str) -> AccessToken | None:
+        """Validate token by calling Supabase auth API."""
+        try:
+            client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+            response = client.auth.get_user(token)
+            if response.user:
+                user_id = str(response.user.id)
+                return AccessToken(
+                    token=token,
+                    client_id="glyx-ios",
+                    scopes=[],
+                    claims={
+                        "sub": user_id,
+                        "email": response.user.email,
+                    },
+                )
+            return None
+        except Exception as e:
+            logger.warning(f"Token validation failed: {e}")
+            return None
+
+
+# Create auth provider
+auth = SupabaseTokenVerifier()
 
 # Create FastMCP instance with auth
 mcp = FastMCP("glyx-ai", auth=auth)
@@ -69,7 +93,7 @@ mcp.tool(get_session_messages)
 mcp.tool(orchestrate)
 
 # ============================================================================
-# Device dispatch tools with auth - extract user_id from JWT claims
+# Device dispatch tools with auth - extract user_id from access token
 # ============================================================================
 
 

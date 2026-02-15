@@ -339,3 +339,90 @@ resource "google_cloud_run_v2_service_iam_member" "public" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+# -----------------------------------------------------------------------------
+# Workload Identity Federation - GitHub Actions CI/CD
+# Requires IAM admin permissions - set enable_github_actions_wif = true
+# -----------------------------------------------------------------------------
+
+resource "google_iam_workload_identity_pool" "github" {
+  count = var.enable_github_actions_wif ? 1 : 0
+
+  workload_identity_pool_id = "github-actions"
+  display_name              = "GitHub Actions"
+  description               = "Workload Identity Pool for GitHub Actions CI/CD"
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_iam_workload_identity_pool_provider" "github" {
+  count = var.enable_github_actions_wif ? 1 : 0
+
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github[0].workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-provider"
+  display_name                       = "GitHub Provider"
+
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.actor"      = "assertion.actor"
+    "attribute.repository" = "assertion.repository"
+  }
+
+  attribute_condition = "assertion.repository == '${var.github_repo}'"
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+}
+
+resource "google_service_account" "github_actions" {
+  count = var.enable_github_actions_wif ? 1 : 0
+
+  account_id   = "github-actions"
+  display_name = "GitHub Actions CI/CD"
+}
+
+# Allow GitHub Actions to impersonate the service account
+resource "google_service_account_iam_member" "github_actions_wif" {
+  count = var.enable_github_actions_wif ? 1 : 0
+
+  service_account_id = google_service_account.github_actions[0].name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github[0].name}/attribute.repository/${var.github_repo}"
+}
+
+# Grant necessary permissions to GitHub Actions service account
+resource "google_project_iam_member" "github_actions_run_admin" {
+  count   = var.enable_github_actions_wif ? 1 : 0
+  project = var.project_id
+  role    = "roles/run.admin"
+  member  = "serviceAccount:${google_service_account.github_actions[0].email}"
+}
+
+resource "google_project_iam_member" "github_actions_artifact_writer" {
+  count   = var.enable_github_actions_wif ? 1 : 0
+  project = var.project_id
+  role    = "roles/artifactregistry.writer"
+  member  = "serviceAccount:${google_service_account.github_actions[0].email}"
+}
+
+resource "google_project_iam_member" "github_actions_secret_accessor" {
+  count   = var.enable_github_actions_wif ? 1 : 0
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.github_actions[0].email}"
+}
+
+resource "google_project_iam_member" "github_actions_sa_user" {
+  count   = var.enable_github_actions_wif ? 1 : 0
+  project = var.project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = "serviceAccount:${google_service_account.github_actions[0].email}"
+}
+
+resource "google_storage_bucket_iam_member" "github_actions_state" {
+  count  = var.enable_github_actions_wif ? 1 : 0
+  bucket = "glyx-terraform-state"
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.github_actions[0].email}"
+}

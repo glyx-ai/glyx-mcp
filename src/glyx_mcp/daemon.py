@@ -274,7 +274,7 @@ class GlyxDaemon:
         api_base_url: str | None = None,
     ):
         self.device_id = device_id
-        self.api_base_url = api_base_url or os.environ.get("GLYX_API_URL", "https://glyx-mcp.onrender.com")
+        self.api_base_url = api_base_url or os.environ.get("GLYX_API_URL", "https://glyx-mcp-nkakhqqwca-uc.a.run.app")
         self.supabase: AsyncClient | None = None
         self.supabase_sync: Client | None = None  # For polling
         self.executor = TaskExecutor(self.api_base_url)
@@ -512,8 +512,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--api-url",
-        default=os.environ.get("GLYX_API_URL", "https://glyx-mcp.onrender.com"),
-        help="API base URL (default: https://glyx-mcp.onrender.com)",
+        default=os.environ.get("GLYX_API_URL", "https://glyx-mcp-nkakhqqwca-uc.a.run.app"),
+        help="API base URL (default: https://glyx-mcp-nkakhqqwca-uc.a.run.app)",
     )
     parser.add_argument(
         "--register",

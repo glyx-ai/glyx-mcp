@@ -16,17 +16,18 @@ terraform {
     }
   }
 
-  # Remote state in GCS (uncomment after initial setup)
-  # backend "gcs" {
-  #   bucket = "glyx-terraform-state"
-  #   prefix = "glyx-mcp"
-  # }
+  backend "gcs" {
+    bucket = "glyx-terraform-state"
+    prefix = "glyx-mcp"
+  }
 }
 
 provider "google" {
-  project     = var.project_id
-  region      = var.region
-  credentials = file("${path.module}/.gcp-key.json")
+  project = var.project_id
+  region  = var.region
+  # Uses Application Default Credentials (ADC)
+  # - Local: gcloud auth application-default login
+  # - CI: Workload Identity Federation
 }
 
 # Enable required APIs
@@ -36,6 +37,7 @@ resource "google_project_service" "apis" {
     "artifactregistry.googleapis.com",
     "secretmanager.googleapis.com",
     "cloudbuild.googleapis.com",
+    "iamcredentials.googleapis.com",
   ])
 
   service            = each.value

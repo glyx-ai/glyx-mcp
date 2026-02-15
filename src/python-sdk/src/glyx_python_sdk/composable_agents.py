@@ -10,6 +10,7 @@ from pathlib import Path
 from time import time
 from typing import Any, AsyncGenerator
 
+from knockapi import Knock
 from supabase import create_client
 
 from glyx_python_sdk.models.cursor import (
@@ -33,6 +34,72 @@ from glyx_python_sdk.exceptions import AgentConfigError
 from glyx_python_sdk.websocket_manager import broadcast_event
 
 logger = logging.getLogger(__name__)
+
+
+def _get_knock_client() -> Knock | None:
+    """Get Knock client if API key is configured."""
+    api_key = settings.knock_api_key
+    if not api_key:
+        return None
+    return Knock(api_key=api_key)
+
+
+def _send_agent_notification(
+    workflow_key: str,
+    user_id: str,
+    agent_type: str,
+    session_id: str,
+    task_summary: str,
+    urgency: str = "medium",
+    action_required: bool = False,
+    error_message: str | None = None,
+    execution_time_s: float | None = None,
+    exit_code: int | None = None,
+    device_name: str | None = None,
+) -> None:
+    """Send agent notification via Knock (non-blocking).
+
+    Workflow keys: agent-start, agent-needs-input, agent-completed, agent-error
+    """
+    knock = _get_knock_client()
+    if not knock:
+        logger.debug("[KNOCK] No API key configured, skipping notification")
+        return
+
+    event_type_map = {
+        "agent-start": "started",
+        "agent-needs-input": "needs_input",
+        "agent-completed": "completed",
+        "agent-error": "error",
+    }
+
+    payload = {
+        "event_type": event_type_map.get(workflow_key, workflow_key),
+        "agent_type": agent_type,
+        "session_id": session_id,
+        "task_summary": task_summary[:200] if task_summary else "Agent task",
+        "urgency": urgency,
+        "action_required": action_required,
+    }
+
+    if error_message:
+        payload["error_message"] = error_message[:500]
+    if execution_time_s is not None:
+        payload["execution_time_s"] = round(execution_time_s, 2)
+    if exit_code is not None:
+        payload["exit_code"] = exit_code
+    if device_name:
+        payload["device_name"] = device_name
+
+    try:
+        knock.workflows.trigger(
+            key=workflow_key,
+            recipients=[user_id],
+            data=payload,
+        )
+        logger.info(f"[KNOCK] Triggered {workflow_key} for user {user_id}")
+    except Exception as e:
+        logger.warning(f"[KNOCK] Failed to send notification: {e}")
 
 
 async def create_event(
@@ -175,6 +242,11 @@ class ComposableAgent:
         """Parse args and execute command, returning structured result."""
         start_time = time()
         model = task_config.get("model", "gpt-5")
+        user_id = task_config.get("user_id")
+        session_id = task_config.get("session_id", "")
+        device_name = task_config.get("device_name")
+        task_summary = task_config.get("prompt", "")[:100] or "Agent task"
+
         logger.info(f"[AGENT EXECUTE] Starting execution for {self.config.agent_key} (model={model})")
         cmd = [self.config.command] + self._build_cli_args(task_config)
 
@@ -184,6 +256,18 @@ class ComposableAgent:
             "agent.start",
             {"agent_key": self.config.agent_key, "command": cmd, "timeout_s": timeout, "model": model},
         )
+
+        # Send iOS push notification via Knock
+        if user_id:
+            _send_agent_notification(
+                workflow_key="agent-start",
+                user_id=user_id,
+                agent_type=self.config.agent_key,
+                session_id=session_id,
+                task_summary=task_summary,
+                urgency="low",
+                device_name=device_name,
+            )
 
         subprocess_start = time()
         logger.info("[AGENT SUBPROCESS] Creating subprocess...")
@@ -245,6 +329,22 @@ class ComposableAgent:
                 "stderr_bytes": len(result.stderr),
             },
         )
+
+        # Send iOS push notification via Knock
+        if user_id:
+            is_error = result.exit_code != 0
+            _send_agent_notification(
+                workflow_key="agent-error" if is_error else "agent-completed",
+                user_id=user_id,
+                agent_type=self.config.agent_key,
+                session_id=session_id,
+                task_summary=task_summary,
+                urgency="high" if is_error else "medium",
+                error_message=result.stderr[:500] if is_error and result.stderr else None,
+                execution_time_s=execution_time,
+                exit_code=result.exit_code,
+                device_name=device_name,
+            )
 
         return result
 
@@ -309,7 +409,24 @@ class ComposableAgent:
         """Execute command and yield events in real-time (NDJSON parsing)."""
         start_time = time()
         model = task_config.get("model", "gpt-5")
+        user_id = task_config.get("user_id")
+        session_id = task_config.get("session_id", "")
+        device_name = task_config.get("device_name")
+        task_summary = task_config.get("prompt", "")[:100] or "Agent task"
+
         logger.info(f"[AGENT STREAM] Starting streaming execution for {self.config.agent_key} (model={model})")
+
+        # Send iOS push notification via Knock
+        if user_id:
+            _send_agent_notification(
+                workflow_key="agent-start",
+                user_id=user_id,
+                agent_type=self.config.agent_key,
+                session_id=session_id,
+                task_summary=task_summary,
+                urgency="low",
+                device_name=device_name,
+            )
 
         cmd = [self.config.command] + self._build_cli_args(task_config)
 
@@ -442,6 +559,22 @@ class ComposableAgent:
 
         execution_time = time() - start_time
         exit_code = process.returncode if process.returncode is not None else -1
+
+        # Send iOS push notification via Knock
+        if user_id:
+            is_error = exit_code != 0
+            _send_agent_notification(
+                workflow_key="agent-error" if is_error else "agent-completed",
+                user_id=user_id,
+                agent_type=self.config.agent_key,
+                session_id=session_id,
+                task_summary=task_summary,
+                urgency="high" if is_error else "medium",
+                execution_time_s=execution_time,
+                exit_code=exit_code,
+                device_name=device_name,
+            )
+
         yield {
             "type": "agent_complete",
             "exit_code": exit_code,

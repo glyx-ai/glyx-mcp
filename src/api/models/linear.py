@@ -53,3 +53,23 @@ class LinearIssue(BaseModel):
     state: Optional[LinearState] = None
     assignee: Optional[LinearAssignee] = None
     url: Optional[str] = None
+
+
+class LinearProject(BaseModel):
+    """Linear Project model."""
+
+    id: str
+    name: str
+    description: Optional[str] = None
+    state: Optional[str] = None
+
+
+class LinearWebhookPayload(BaseModel):
+    """Linear webhook payload model."""
+
+    action: str
+    type: str
+    data: dict
+    createdAt: Optional[str] = None
+    organizationId: Optional[str] = None
+    url: Optional[str] = None

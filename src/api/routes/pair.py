@@ -47,7 +47,7 @@ async def get_pair_script() -> str:
 
 PAIR_SCRIPT = r'''#!/bin/bash
 # Glyx Device Pairing Script
-# Usage: curl -sL https://glyx-mcp.onrender.com/pair | bash
+# Usage: curl -sL https://glyx-mcp-nkakhqqwca-uc.a.run.app/pair | bash
 #
 # This script:
 # 1. Generates a unique device ID
