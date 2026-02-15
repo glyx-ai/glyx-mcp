@@ -52,6 +52,26 @@ jobs:
         working-directory: infra
         run: terraform init -upgrade
 
+      - name: Remove orphaned resources from state
+        working-directory: infra
+        run: |
+          # Remove resources that SA can't manage (APIs, WIF, etc.)
+          terraform state rm 'google_project_service.apis["run.googleapis.com"]' 2>/dev/null || true
+          terraform state rm 'google_project_service.apis["artifactregistry.googleapis.com"]' 2>/dev/null || true
+          terraform state rm 'google_project_service.apis["secretmanager.googleapis.com"]' 2>/dev/null || true
+          terraform state rm 'google_project_service.apis["cloudbuild.googleapis.com"]' 2>/dev/null || true
+          terraform state rm 'google_project_service.apis["iamcredentials.googleapis.com"]' 2>/dev/null || true
+          terraform state rm 'google_iam_workload_identity_pool.github[0]' 2>/dev/null || true
+          terraform state rm 'google_iam_workload_identity_pool_provider.github[0]' 2>/dev/null || true
+          terraform state rm 'google_service_account.github_actions[0]' 2>/dev/null || true
+          terraform state rm 'google_service_account_iam_member.github_actions_wif[0]' 2>/dev/null || true
+          terraform state rm 'google_project_iam_member.github_actions_run_admin[0]' 2>/dev/null || true
+          terraform state rm 'google_project_iam_member.github_actions_artifact_writer[0]' 2>/dev/null || true
+          terraform state rm 'google_project_iam_member.github_actions_secret_accessor[0]' 2>/dev/null || true
+          terraform state rm 'google_project_iam_member.github_actions_sa_user[0]' 2>/dev/null || true
+          terraform state rm 'google_storage_bucket_iam_member.github_actions_state[0]' 2>/dev/null || true
+          echo "Orphaned resources removed from state"
+
       - name: Terraform Apply
         working-directory: infra
         run: terraform apply -auto-approve -lock-timeout=2m
