@@ -30,6 +30,7 @@ class TaskStatus(StrEnum):
     FAILED = "failed"
     NEEDS_INPUT = "needs_input"
     CANCELLED = "cancelled"
+    TIMEOUT = "timeout"
 
 
 class TaskStatusUpdateRequest(BaseModel):
@@ -120,7 +121,11 @@ async def update_task_status(
             update_data["started_at"] = datetime.now(UTC).isoformat()
 
         # Set completed_at when task finishes
-        if body.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+        terminal_statuses = (
+            TaskStatus.COMPLETED, TaskStatus.FAILED,
+            TaskStatus.CANCELLED, TaskStatus.TIMEOUT
+        )
+        if body.status in terminal_statuses:
             update_data["completed_at"] = datetime.now(UTC).isoformat()
 
     # Append output if provided (streaming)
@@ -216,3 +221,76 @@ async def list_tasks(
     result = query.execute()
 
     return result.data if result.data else []
+
+
+# Task timeout configuration: 10 minutes
+TASK_TIMEOUT_MINUTES = 10
+
+
+class TimeoutCheckResponse(BaseModel):
+    """Response from timeout check endpoint."""
+
+    timed_out_count: int
+    task_ids: list[str]
+
+
+@router.post(
+    "/timeout-check",
+    summary="Check and Mark Timed Out Tasks",
+    description="""
+Mark stale tasks as timed out.
+
+Tasks are considered timed out if:
+- Status is 'pending' or 'running'
+- Last update (updated_at) was more than 10 minutes ago
+
+This endpoint can be called periodically by a cron job or the iOS app
+to ensure stuck tasks don't hang forever.
+
+Returns the count and IDs of tasks that were marked as timed out.
+    """,
+    response_model=TimeoutCheckResponse,
+)
+async def check_timeouts() -> TimeoutCheckResponse:
+    """Check for stale tasks and mark them as timed out."""
+    supabase = _get_supabase()
+
+    # Calculate cutoff time (10 minutes ago)
+    from datetime import timedelta
+    cutoff = datetime.now(UTC) - timedelta(minutes=TASK_TIMEOUT_MINUTES)
+    cutoff_iso = cutoff.isoformat()
+
+    # Find stale tasks: pending/running with updated_at older than cutoff
+    # Note: needs_input is excluded - those tasks are waiting for user input
+    stale_query = (
+        supabase.table("agent_tasks")
+        .select("id, status, updated_at")
+        .in_("status", [TaskStatus.PENDING.value, TaskStatus.RUNNING.value])
+        .lt("updated_at", cutoff_iso)
+    )
+
+    stale_result = stale_query.execute()
+    stale_tasks = stale_result.data if stale_result.data else []
+
+    if not stale_tasks:
+        return TimeoutCheckResponse(timed_out_count=0, task_ids=[])
+
+    # Mark each stale task as timed out
+    now_iso = datetime.now(UTC).isoformat()
+    timed_out_ids = []
+
+    for task in stale_tasks:
+        task_id = task["id"]
+        supabase.table("agent_tasks").update({
+            "status": TaskStatus.TIMEOUT.value,
+            "error": f"Task timed out after {TASK_TIMEOUT_MINUTES} minutes with no update",
+            "completed_at": now_iso,
+            "updated_at": now_iso,
+        }).eq("id", task_id).execute()
+        timed_out_ids.append(task_id)
+        logger.info(f"Task {task_id} marked as timed out (last update: {task['updated_at']})")
+
+    return TimeoutCheckResponse(
+        timed_out_count=len(timed_out_ids),
+        task_ids=timed_out_ids,
+    )
