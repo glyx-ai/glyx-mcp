@@ -268,6 +268,9 @@ class GlyxDaemon:
     then executes tasks as they arrive.
     """
 
+    # Heartbeat interval in seconds
+    HEARTBEAT_INTERVAL = 30
+
     def __init__(
         self,
         device_id: str,
@@ -280,6 +283,7 @@ class GlyxDaemon:
         self.executor = TaskExecutor(self.api_base_url)
         self.running = False
         self.task_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        self.start_time = time.time()
 
     async def _create_supabase_client(self) -> AsyncClient:
         """Create async Supabase client for Realtime."""
@@ -345,6 +349,34 @@ class GlyxDaemon:
             except Exception as e:
                 logger.error(f"Error processing task: {e}")
 
+    async def _send_heartbeat(self) -> bool:
+        """Send a heartbeat to the server to indicate daemon is alive."""
+        url = f"{self.api_base_url}/api/devices/{self.device_id}/heartbeat"
+        uptime = time.time() - self.start_time
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    url,
+                    json={
+                        "uptime_seconds": uptime,
+                        "hostname": _get_hostname(),
+                        "version": "1.0.0",
+                    },
+                )
+                response.raise_for_status()
+                logger.debug(f"Heartbeat sent successfully (uptime: {uptime:.0f}s)")
+                return True
+        except Exception as e:
+            logger.warning(f"Failed to send heartbeat: {e}")
+            return False
+
+    async def _heartbeat_loop(self) -> None:
+        """Periodically send heartbeats to the server."""
+        while self.running:
+            await self._send_heartbeat()
+            await asyncio.sleep(self.HEARTBEAT_INTERVAL)
+
     def _poll_pending_tasks(self) -> None:
         """Poll for any pending tasks that might have been missed."""
         try:
@@ -399,11 +431,15 @@ class GlyxDaemon:
         # Small delay to ensure subscription is active
         await asyncio.sleep(1.0)
 
+        # Send initial heartbeat
+        await self._send_heartbeat()
+
         # Poll for any existing pending tasks
         self._poll_pending_tasks()
 
-        # Start task processor
+        # Start task processor and heartbeat loop
         processor_task = asyncio.create_task(self._process_tasks())
+        heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
         logger.info("Daemon is running. Press Ctrl+C to stop.")
 
@@ -416,8 +452,10 @@ class GlyxDaemon:
         finally:
             self.running = False
             processor_task.cancel()
+            heartbeat_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await processor_task
+                await heartbeat_task
             logger.info("Daemon stopped.")
 
     def stop(self) -> None:

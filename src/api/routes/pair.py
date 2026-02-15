@@ -35,7 +35,7 @@ async def get_pair_script() -> str:
     Returns a shell script that sets up device pairing for the Glyx iOS app.
 
     Usage:
-        curl -sL glyx.dev/pair | sh
+        curl -sL api.glyx.ai/pair | bash
 
     The script will:
     1. Generate a unique pairing code
@@ -47,7 +47,7 @@ async def get_pair_script() -> str:
 
 PAIR_SCRIPT = r'''#!/bin/bash
 # Glyx Device Pairing Script
-# Usage: curl -sL https://glyx.ai/pair | bash
+# Usage: curl -sL api.glyx.ai/pair | bash
 #
 # This script:
 # 1. Generates a unique device ID

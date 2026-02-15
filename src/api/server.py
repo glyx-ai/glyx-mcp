@@ -45,6 +45,7 @@ from api.routes import (  # noqa: E402
     auth,
     composable_workflows,
     deployments,
+    devices,
     github,
     health,
     hitl,
@@ -162,6 +163,7 @@ api_app.include_router(deployments.router)
 api_app.include_router(github.router)
 api_app.include_router(linear.router)
 api_app.include_router(pair.router)
+api_app.include_router(devices.router)
 
 # Register webhook routers
 github_webhook_router = create_github_webhook_router(
@@ -239,6 +241,7 @@ combined_app.include_router(deployments.router)
 combined_app.include_router(github.router)
 combined_app.include_router(linear.router)
 combined_app.include_router(pair.router)
+combined_app.include_router(devices.router)
 combined_app.include_router(github_webhook_router)
 combined_app.include_router(linear_webhook_router)
 
