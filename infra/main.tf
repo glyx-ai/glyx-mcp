@@ -256,6 +256,13 @@ resource "google_cloud_run_v2_service" "glyx_mcp" {
   name     = var.service_name
   location = var.region
 
+  # Explicit timeouts to prevent hung deployments
+  timeouts {
+    create = "5m"
+    update = "5m"
+    delete = "5m"
+  }
+
   template {
     service_account = google_service_account.cloud_run.email
 

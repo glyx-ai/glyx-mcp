@@ -8,7 +8,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 5.27.0"  # Pinned - 5.28+ has Cloud Run v2 polling regression
     }
     docker = {
       source  = "kreuzwerker/docker"
