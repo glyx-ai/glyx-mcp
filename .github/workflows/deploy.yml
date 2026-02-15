@@ -50,7 +50,7 @@ jobs:
 
       - name: Terraform Init
         working-directory: infra
-        run: terraform init
+        run: terraform init -upgrade
 
       - name: Terraform Apply
         working-directory: infra
