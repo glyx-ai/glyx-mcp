@@ -13,6 +13,7 @@ from enum import StrEnum
 
 from fastapi import APIRouter, HTTPException
 from glyx_python_sdk.settings import settings
+from knockapi import Knock
 from pydantic import BaseModel, Field
 
 from supabase import create_client
@@ -20,6 +21,51 @@ from supabase import create_client
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/hitl", tags=["HITL"])
+
+
+def _send_hitl_notification(
+    user_id: str,
+    hitl_request_id: str,
+    task_id: str,
+    prompt: str,
+    agent_type: str = "agent",
+    device_name: str | None = None,
+) -> None:
+    """Send HITL notification via Knock when agent needs user input.
+
+    This triggers the 'agent-needs-input' workflow with the hitl_request_id
+    included for deep linking directly to the HITL request.
+    """
+    api_key = settings.knock_api_key
+    if not api_key:
+        logger.debug("[KNOCK] No API key configured, skipping HITL notification")
+        return
+
+    knock = Knock(api_key=api_key)
+    payload = {
+        "event_type": "needs_input",
+        "agent_type": agent_type,
+        "session_id": task_id,
+        "task_summary": prompt[:200],
+        "urgency": "critical",
+        "action_required": True,
+        "hitl_request_id": hitl_request_id,
+    }
+    if device_name:
+        payload["device_name"] = device_name
+
+    try:
+        knock.workflows.trigger(
+            key="agent-needs-input",
+            recipients=[user_id],
+            data=payload,
+        )
+        logger.info(
+            f"[KNOCK] Triggered agent-needs-input for user {user_id}, "
+            f"hitl_request_id={hitl_request_id}"
+        )
+    except Exception as e:
+        logger.warning(f"[KNOCK] Failed to send HITL notification: {e}")
 
 
 class HITLStatus(StrEnum):
@@ -85,6 +131,9 @@ The request is stored in the database and the user is notified via push notifica
 
 **Task Status Update**: The associated agent_task status is automatically set to 'needs_input'.
 
+**Push Notification**: A Knock notification is sent to the user with the hitl_request_id
+for deep linking directly to the pending request.
+
 **Expiration**: HITL requests expire after 5 minutes by default.
     """,
     response_model=HITLRequestResponse,
@@ -93,10 +142,10 @@ async def create_hitl_request(body: CreateHITLRequest) -> HITLRequestResponse:
     """Create a new HITL request for human input."""
     supabase = _get_supabase()
 
-    # Fetch the task to get user_id and validate it exists
+    # Fetch the task to get user_id, agent_type, device_id
     task_result = (
         supabase.table("agent_tasks")
-        .select("id, user_id, status")
+        .select("id, user_id, status, agent_type, device_id")
         .eq("id", body.task_id)
         .maybe_single()
         .execute()
@@ -107,6 +156,8 @@ async def create_hitl_request(body: CreateHITLRequest) -> HITLRequestResponse:
 
     task = task_result.data
     user_id = task["user_id"]
+    agent_type = task.get("agent_type", "agent")
+    device_id = task.get("device_id")
 
     # Create the HITL request
     hitl_data = {
@@ -129,6 +180,16 @@ async def create_hitl_request(body: CreateHITLRequest) -> HITLRequestResponse:
         "status": "needs_input",
         "updated_at": datetime.now(UTC).isoformat(),
     }).eq("id", body.task_id).execute()
+
+    # Send push notification via Knock with hitl_request_id for deep linking
+    _send_hitl_notification(
+        user_id=user_id,
+        hitl_request_id=hitl_request["id"],
+        task_id=body.task_id,
+        prompt=body.prompt,
+        agent_type=agent_type,
+        device_name=device_id,
+    )
 
     return HITLRequestResponse(
         id=hitl_request["id"],
