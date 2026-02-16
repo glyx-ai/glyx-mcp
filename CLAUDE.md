@@ -178,8 +178,13 @@ ruff check src/
 ### agent_tasks
 Task dispatch to paired devices (iOS → Mac daemon)
 - `id` (UUID), `user_id`, `device_id`, `agent_type`, `task_type`
-- `payload` (JSONB), `status` (pending/running/completed/failed)
-- `created_at`, `updated_at`
+- `payload` (JSONB), `status` (pending/running/completed/failed/needs_input/cancelled/timeout)
+- `output` (TEXT) - Streaming output from agent, appended during execution
+- `error` (TEXT) - Error message if task failed
+- `exit_code` (INTEGER) - Process exit code (0 = success)
+- `created_at`, `updated_at`, `started_at`, `completed_at`
+
+**Backend Access**: Uses `SUPABASE_SECRET_KEY` (sb_secret_...) which bypasses RLS for direct table access.
 
 ### paired_devices
 User's paired iOS/Mac devices
@@ -337,8 +342,9 @@ KNOCK_PUBLISHABLE_KEY       # Knock client-side
 ### Supabase
 ```
 SUPABASE_URL                # https://xxx.supabase.co
-SUPABASE_ANON_KEY           # Public key
-SUPABASE_SERVICE_ROLE_KEY   # Admin key
+SUPABASE_ANON_KEY           # Public key (sb_publishable_...) for client ops
+SUPABASE_SECRET_KEY         # Secret key (sb_secret_...) for backend ops, bypasses RLS
+SUPABASE_SERVICE_ROLE_KEY   # (deprecated) Legacy service role key
 ```
 
 ### GitHub App
