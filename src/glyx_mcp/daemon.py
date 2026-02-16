@@ -276,7 +276,9 @@ class GlyxDaemon:
         device_id: str,
         api_base_url: str | None = None,
     ):
-        self.device_id = device_id
+        # Normalize device_id to lowercase for consistent comparison
+        # (iOS saves UUIDs as uppercase, but QR/file uses lowercase)
+        self.device_id = device_id.lower()
         self.api_base_url = api_base_url or os.environ.get("GLYX_API_URL", "https://glyx.ai")
         self.supabase: AsyncClient | None = None
         self.supabase_sync: Client | None = None  # For polling
