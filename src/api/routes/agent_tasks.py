@@ -91,18 +91,31 @@ async def update_task_status(
     body: TaskStatusUpdateRequest,
 ) -> TaskStatusUpdateResponse:
     """Update task status and optionally append output."""
-    supabase = _get_supabase()
+    logger.info(f"[{task_id}] Status update request: status={body.status}, output_len={len(body.output) if body.output else 0}")
+
+    try:
+        supabase = _get_supabase()
+        logger.debug(f"[{task_id}] Supabase client created, fetching task...")
+    except Exception as e:
+        logger.error(f"[{task_id}] Failed to create Supabase client: {e}")
+        raise HTTPException(status_code=500, detail=f"Database connection failed: {e}")
 
     # Fetch current task to validate and get existing output
-    task_result = (
-        supabase.table("agent_tasks")
-        .select("id, user_id, status, output")
-        .eq("id", task_id)
-        .maybe_single()
-        .execute()
-    )
+    try:
+        task_result = (
+            supabase.table("agent_tasks")
+            .select("id, user_id, status, output")
+            .eq("id", task_id)
+            .maybe_single()
+            .execute()
+        )
+        logger.debug(f"[{task_id}] Query result: {task_result.data is not None}")
+    except Exception as e:
+        logger.error(f"[{task_id}] Failed to fetch task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch task: {e}")
 
     if not task_result.data:
+        logger.warning(f"[{task_id}] Task not found in database")
         raise HTTPException(status_code=404, detail="Task not found")
 
     task = task_result.data
@@ -142,17 +155,24 @@ async def update_task_status(
         update_data["exit_code"] = body.exit_code
 
     # Perform update
-    result = (
-        supabase.table("agent_tasks")
-        .update(update_data)
-        .eq("id", task_id)
-        .execute()
-    )
+    try:
+        logger.debug(f"[{task_id}] Updating task with: {list(update_data.keys())}")
+        result = (
+            supabase.table("agent_tasks")
+            .update(update_data)
+            .eq("id", task_id)
+            .execute()
+        )
+    except Exception as e:
+        logger.error(f"[{task_id}] Failed to update task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update task: {e}")
 
     if not result.data:
+        logger.error(f"[{task_id}] Update returned no data")
         raise HTTPException(status_code=500, detail="Failed to update task")
 
     updated_task = result.data[0]
+    logger.info(f"[{task_id}] Task updated successfully: status={updated_task.get('status')}")
 
     return TaskStatusUpdateResponse(
         task_id=task_id,

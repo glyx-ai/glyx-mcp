@@ -1,6 +1,6 @@
 [project]
 name = "glyx"
-version = "0.1.1"
+version = "0.1.2"
 description = "Composable AI agent framework with FastMCP integration"
 readme = "README.md"
 authors = [
