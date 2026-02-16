@@ -100,15 +100,17 @@ async def update_task_status(
     logger.info(f"[{task_id}] Status update request: status={body.status}, output_len={len(body.output) if body.output else 0}")
 
     try:
-        supabase = _get_supabase()
         key = settings.supabase_service_role_key or "NOT_SET"
-        logger.warning(f"[{task_id}] Supabase client created with key: {key[:8]}..., fetching task...")
+        print(f"[DIAG] [{task_id}] Using key: {key[:8]}... URL: {settings.supabase_url}", flush=True)
+        supabase = _get_supabase()
     except Exception as e:
+        print(f"[DIAG] [{task_id}] Failed to create client: {e}", flush=True)
         logger.error(f"[{task_id}] Failed to create Supabase client: {e}")
         raise HTTPException(status_code=500, detail=f"Database connection failed: {e}")
 
     # Fetch current task to validate and get existing output
     try:
+        print(f"[DIAG] [{task_id}] Executing query...", flush=True)
         task_result = (
             supabase.table("agent_tasks")
             .select("id, user_id, status, output")
@@ -116,8 +118,9 @@ async def update_task_status(
             .maybe_single()
             .execute()
         )
-        logger.debug(f"[{task_id}] Query result: {task_result.data is not None}")
+        print(f"[DIAG] [{task_id}] Query success: {task_result.data is not None}", flush=True)
     except Exception as e:
+        print(f"[DIAG] [{task_id}] Query failed: {e}", flush=True)
         logger.error(f"[{task_id}] Failed to fetch task: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch task: {e}")
 
