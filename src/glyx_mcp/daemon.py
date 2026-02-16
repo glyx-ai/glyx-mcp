@@ -24,10 +24,24 @@ from typing import Any
 
 import httpx
 from glyx_python_sdk.settings import settings
+from glyx_python_sdk.composable_agents import ComposableAgent
+from glyx_python_sdk.agent_types import AgentKey
 from supabase._async.client import AsyncClient
 from supabase._async.client import create_client as create_async_client
 
 from supabase import Client, create_client
+
+# Map agent_type strings from database to AgentKey enum
+AGENT_KEY_MAP: dict[str, AgentKey] = {
+    "claude": AgentKey.CLAUDE,
+    "claude-code": AgentKey.CLAUDE,
+    "cursor": AgentKey.CURSOR,
+    "codex": AgentKey.CODEX,
+    "aider": AgentKey.AIDER,
+    "gemini": AgentKey.GEMINI,
+    "opencode": AgentKey.OPENCODE,
+    "grok": AgentKey.GROK,
+}
 
 logging.basicConfig(
     level=logging.INFO,
@@ -213,6 +227,181 @@ class TaskExecutor:
             )
             return 1, error_msg
 
+    async def execute_agent_stream(
+        self,
+        task_id: str,
+        agent_key: AgentKey,
+        prompt: str,
+        cwd: str | None = None,
+        user_id: str | None = None,
+        device_name: str | None = None,
+    ) -> tuple[int, str]:
+        """Execute a task using ComposableAgent with streaming output.
+
+        Uses the SDK's execute_stream() which:
+        - Builds CLI args from JSON config
+        - Parses NDJSON events in real-time
+        - Sends Knock notifications
+        """
+        logger.info(f"[{task_id}] Executing with ComposableAgent: {agent_key.value}")
+
+        # Mark as running
+        self.update_task_status(task_id, status="running")
+
+        try:
+            # Create agent from key (loads config from JSON)
+            agent = ComposableAgent.from_key(agent_key)
+
+            # Build task config (matches TaskConfig model)
+            task_config = {
+                "prompt": prompt,
+                "working_dir": cwd or os.getcwd(),
+                "user_id": user_id,
+                "session_id": task_id,
+                "device_name": device_name,
+            }
+
+            logger.info(f"[{task_id}] Task config: working_dir={task_config['working_dir']}")
+
+            full_output = []
+            output_buffer = []
+            last_flush = time.time()
+            exit_code = 0
+
+            # Stream events from execute_stream()
+            async for event in agent.execute_stream(task_config, timeout=300):
+                event_type = event.get("type", "unknown")
+
+                if event_type == "agent_output":
+                    # Raw text output (non-JSON lines)
+                    content = event.get("content", "")
+                    if content:
+                        full_output.append(content)
+                        output_buffer.append(content + "\n")
+                        logger.debug(f"[{task_id}] output: {content[:100]}")
+
+                elif event_type == "agent_event":
+                    # Parsed NDJSON event from cursor/claude
+                    parsed = event.get("event", {})
+                    if isinstance(parsed, dict):
+                        # Extract text from assistant messages
+                        msg_type = parsed.get("type", "")
+                        if msg_type == "assistant":
+                            # Get text content from message
+                            message = parsed.get("message", {})
+                            content_blocks = message.get("content", []) if isinstance(message, dict) else []
+                            for block in content_blocks:
+                                if isinstance(block, dict) and block.get("type") == "text":
+                                    text = block.get("text", "")
+                                    if text:
+                                        full_output.append(text)
+                                        output_buffer.append(text)
+                                        logger.debug(f"[{task_id}] assistant: {text[:100]}")
+                        elif msg_type == "result":
+                            # Tool result or final output
+                            result = parsed.get("result", "")
+                            if result:
+                                full_output.append(result)
+                                output_buffer.append(result + "\n")
+                                logger.info(f"[{task_id}] result: {result[:100]}")
+
+                elif event_type == "agent_error":
+                    # Stderr output
+                    content = event.get("content", "")
+                    if content:
+                        full_output.append(f"[stderr] {content}")
+                        logger.warning(f"[{task_id}] stderr: {content[:100]}")
+
+                elif event_type == "agent_complete":
+                    # Final event with exit code
+                    exit_code = event.get("exit_code", 0)
+                    exec_time = event.get("execution_time", 0)
+                    logger.info(f"[{task_id}] complete: exit_code={exit_code}, time={exec_time:.2f}s")
+
+                # Flush output buffer periodically (every 0.5s or when large)
+                now = time.time()
+                if now - last_flush > 0.5 or len(output_buffer) > 10:
+                    if output_buffer:
+                        chunk = "".join(output_buffer)
+                        self.update_task_status(task_id, output=chunk)
+                        output_buffer.clear()
+                        last_flush = now
+
+            # Flush remaining buffer
+            if output_buffer:
+                chunk = "".join(output_buffer)
+                self.update_task_status(task_id, output=chunk)
+
+            # Mark as completed or failed
+            final_status = "completed" if exit_code == 0 else "failed"
+            self.update_task_status(
+                task_id,
+                status=final_status,
+                exit_code=exit_code,
+            )
+
+            return exit_code, "\n".join(full_output)
+
+        except FileNotFoundError as e:
+            error_msg = f"Agent CLI not found: {agent_key.value}. Error: {e}"
+            logger.error(f"[{task_id}] {error_msg}")
+            self.update_task_status(
+                task_id,
+                status="failed",
+                error=error_msg,
+                exit_code=127,
+            )
+            return 127, error_msg
+
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"[{task_id}] Agent execution failed: {error_msg}")
+            self.update_task_status(
+                task_id,
+                status="failed",
+                error=error_msg,
+                exit_code=1,
+            )
+            return 1, error_msg
+
+    async def execute_task_async(self, task: dict[str, Any]) -> None:
+        """Execute a task asynchronously (for agent tasks with streaming)."""
+        task_id = task["id"]
+        agent_type = task.get("agent_type", "shell")
+        task_type = task.get("task_type", "command")
+        payload = task.get("payload", {})
+        user_id = task.get("user_id")
+        device_name = task.get("device_name")
+
+        logger.info(f"[{task_id}] ▶ EXECUTING (async): agent={agent_type}, type={task_type}")
+
+        cwd = payload.get("cwd") or payload.get("working_dir")
+
+        # Check if this is an AI agent type
+        agent_key = AGENT_KEY_MAP.get(agent_type)
+
+        if agent_key and task_type == "prompt":
+            # Use ComposableAgent for AI agent tasks
+            prompt = payload.get("prompt", "")
+            if prompt:
+                await self.execute_agent_stream(
+                    task_id, agent_key, prompt, cwd, user_id, device_name
+                )
+            else:
+                self.update_task_status(
+                    task_id,
+                    status="failed",
+                    error="No prompt provided",
+                )
+        else:
+            # Fall back to sync execution for shell commands
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                self.execute_task,
+                task,
+            )
+
     def execute_task(self, task: dict[str, Any]) -> None:
         """Execute a task based on its type and agent."""
         task_id = task["id"]
@@ -220,7 +409,8 @@ class TaskExecutor:
         task_type = task.get("task_type", "command")
         payload = task.get("payload", {})
 
-        logger.info(f"[{task_id}] Executing {agent_type}/{task_type} task")
+        logger.info(f"[{task_id}] ▶ EXECUTING task: agent={agent_type}, type={task_type}")
+        logger.info(f"[{task_id}] Payload: {payload}")
 
         cwd = payload.get("cwd")
 
@@ -305,30 +495,36 @@ class GlyxDaemon:
 
     def _on_task_insert(self, payload: dict[str, Any]) -> None:
         """Handle new task insertion from Realtime."""
+        logger.info(f"[Realtime] Received INSERT event: {payload.get('eventType', 'unknown')}")
+
         new_task = payload.get("new", {})
         if not new_task:
+            logger.warning("[Realtime] No 'new' data in payload")
             return
 
         task_id = new_task.get("id")
         task_device_id = new_task.get("device_id")
         task_status = new_task.get("status")
 
+        logger.info(f"[Realtime] Task {task_id}: device={task_device_id}, status={task_status}")
+
         # Only process tasks for this device that are pending
         if task_device_id != self.device_id:
-            logger.debug(f"Ignoring task {task_id} for device {task_device_id}")
+            logger.debug(f"[Realtime] Ignoring task {task_id} - wrong device (got {task_device_id}, want {self.device_id})")
             return
 
         if task_status != "pending":
-            logger.debug(f"Ignoring task {task_id} with status {task_status}")
+            logger.debug(f"[Realtime] Ignoring task {task_id} - status is {task_status}, not pending")
             return
 
-        logger.info(f"Received new task: {task_id}")
+        logger.info(f"[Realtime] ✓ Queuing task {task_id} for execution")
 
         # Queue the task for execution
         try:
             self.task_queue.put_nowait(new_task)
+            logger.info(f"[Realtime] Task {task_id} queued successfully (queue size: {self.task_queue.qsize()})")
         except asyncio.QueueFull:
-            logger.error(f"Task queue full, dropping task {task_id}")
+            logger.error(f"[Realtime] Task queue full, dropping task {task_id}")
 
     async def _process_tasks(self) -> None:
         """Worker that processes tasks from the queue."""
@@ -338,13 +534,8 @@ class GlyxDaemon:
                     self.task_queue.get(),
                     timeout=1.0,
                 )
-                # Execute in thread pool to avoid blocking
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    None,
-                    self.executor.execute_task,
-                    task,
-                )
+                # Use async execute path (handles both agent streaming and shell commands)
+                await self.executor.execute_task_async(task)
                 self.task_queue.task_done()
             except TimeoutError:
                 continue
@@ -382,6 +573,7 @@ class GlyxDaemon:
     def _poll_pending_tasks(self) -> None:
         """Poll for any pending tasks that might have been missed."""
         try:
+            logger.debug(f"[Poll] Querying for pending tasks for device {self.device_id}")
             result = (
                 self.supabase_sync.table("agent_tasks")
                 .select("*")
@@ -391,15 +583,19 @@ class GlyxDaemon:
             )
 
             if result.data:
-                logger.info(f"Found {len(result.data)} pending tasks")
+                logger.info(f"[Poll] Found {len(result.data)} pending tasks")
                 for task in result.data:
+                    task_id = task.get("id")
+                    logger.info(f"[Poll] ✓ Queuing task {task_id}")
                     try:
                         self.task_queue.put_nowait(task)
                     except asyncio.QueueFull:
-                        logger.warning("Task queue full during poll")
+                        logger.warning(f"[Poll] Task queue full, skipping task {task_id}")
                         break
+            else:
+                logger.debug("[Poll] No pending tasks found")
         except Exception as e:
-            logger.error(f"Error polling pending tasks: {e}")
+            logger.error(f"[Poll] Error polling pending tasks: {e}")
 
     async def subscribe_to_tasks(self) -> Any:
         """Subscribe to Realtime for task insertions."""
@@ -417,6 +613,14 @@ class GlyxDaemon:
         await channel.subscribe()
         logger.info(f"Subscribed to Realtime channel: {channel_name}")
         return channel
+
+    async def _polling_loop(self) -> None:
+        """Periodically poll for pending tasks as fallback for Realtime failures."""
+        poll_interval = 10  # seconds
+        while self.running:
+            await asyncio.sleep(poll_interval)
+            logger.debug("Polling for pending tasks...")
+            self._poll_pending_tasks()
 
     async def run(self) -> None:
         """Run the daemon."""
@@ -439,9 +643,10 @@ class GlyxDaemon:
         # Poll for any existing pending tasks
         self._poll_pending_tasks()
 
-        # Start task processor and heartbeat loop
+        # Start task processor, heartbeat loop, and polling loop
         processor_task = asyncio.create_task(self._process_tasks())
         heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        polling_task = asyncio.create_task(self._polling_loop())
 
         logger.info("Daemon is running. Press Ctrl+C to stop.")
 
@@ -455,9 +660,11 @@ class GlyxDaemon:
             self.running = False
             processor_task.cancel()
             heartbeat_task.cancel()
+            polling_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await processor_task
                 await heartbeat_task
+                await polling_task
             logger.info("Daemon stopped.")
 
     def stop(self) -> None:
