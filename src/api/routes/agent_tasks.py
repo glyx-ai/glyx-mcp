@@ -64,26 +64,16 @@ class TaskStatusUpdateResponse(BaseModel):
 
 
 def _get_supabase():
-    """Get Supabase client authenticated as daemon service user."""
+    """Get Supabase client for RPC calls.
+
+    Uses the anon/publishable key. All daemon operations go through
+    SECURITY DEFINER RPC functions that bypass RLS internally.
+    No user authentication is needed - the functions handle authorization.
+    """
     if not settings.supabase_url or not settings.supabase_anon_key:
         raise ValueError("Missing SUPABASE_URL or SUPABASE_ANON_KEY")
 
-    if not settings.daemon_user_email or not settings.daemon_user_password:
-        raise ValueError("Missing DAEMON_USER_EMAIL or DAEMON_USER_PASSWORD")
-
-    client = create_client(settings.supabase_url, settings.supabase_anon_key)
-
-    # Authenticate as the daemon service user
-    auth_response = client.auth.sign_in_with_password({
-        "email": settings.daemon_user_email,
-        "password": settings.daemon_user_password,
-    })
-
-    if not auth_response.user:
-        raise ValueError("Failed to authenticate daemon user")
-
-    logger.debug(f"Authenticated as daemon user: {auth_response.user.id}")
-    return client
+    return create_client(settings.supabase_url, settings.supabase_anon_key)
 
 
 @router.post(
@@ -108,7 +98,10 @@ async def update_task_status(
     task_id: str,
     body: TaskStatusUpdateRequest,
 ) -> TaskStatusUpdateResponse:
-    """Update task status and optionally append output."""
+    """Update task status and optionally append output.
+
+    Uses daemon_update_task_status RPC function which bypasses RLS.
+    """
     logger.info(f"[{task_id}] Status update request: status={body.status}, output_len={len(body.output) if body.output else 0}")
 
     try:
@@ -117,83 +110,41 @@ async def update_task_status(
         logger.error(f"[{task_id}] Failed to create Supabase client: {e}")
         raise HTTPException(status_code=500, detail=f"Database connection failed: {e}")
 
-    # Fetch current task to validate and get existing output
+    # Call RPC function - handles output append, timestamps, etc.
     try:
-        task_result = (
-            supabase.table("agent_tasks")
-            .select("id, user_id, status, output")
-            .eq("id", task_id)
-            .maybe_single()
-            .execute()
-        )
-    except Exception as e:
-        logger.error(f"[{task_id}] Failed to fetch task: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch task: {e}")
-
-    if not task_result.data:
-        logger.warning(f"[{task_id}] Task not found in database")
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    task = task_result.data
-
-    # Build update payload
-    update_data: dict = {
-        "updated_at": datetime.now(UTC).isoformat(),
-    }
-
-    # Update status if provided
-    if body.status is not None:
-        update_data["status"] = body.status.value
-
-        # Set started_at when transitioning to running
-        if body.status == TaskStatus.RUNNING:
-            update_data["started_at"] = datetime.now(UTC).isoformat()
-
-        # Set completed_at when task finishes
-        terminal_statuses = (
-            TaskStatus.COMPLETED, TaskStatus.FAILED,
-            TaskStatus.CANCELLED, TaskStatus.TIMEOUT
-        )
-        if body.status in terminal_statuses:
-            update_data["completed_at"] = datetime.now(UTC).isoformat()
-
-    # Append output if provided (streaming)
-    if body.output is not None:
-        existing_output = task.get("output") or ""
-        update_data["output"] = existing_output + body.output
-
-    # Set error if provided
-    if body.error is not None:
-        update_data["error"] = body.error
-
-    # Set exit_code if provided
-    if body.exit_code is not None:
-        update_data["exit_code"] = body.exit_code
-
-    # Perform update
-    try:
-        logger.debug(f"[{task_id}] Updating task with: {list(update_data.keys())}")
-        result = (
-            supabase.table("agent_tasks")
-            .update(update_data)
-            .eq("id", task_id)
-            .execute()
-        )
+        result = supabase.rpc(
+            "daemon_update_task_status",
+            {
+                "p_task_id": task_id,
+                "p_status": body.status.value if body.status else None,
+                "p_output": body.output,
+                "p_error": body.error,
+                "p_exit_code": body.exit_code,
+            },
+        ).execute()
     except Exception as e:
         logger.error(f"[{task_id}] Failed to update task: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to update task: {e}")
 
     if not result.data:
-        logger.error(f"[{task_id}] Update returned no data")
+        logger.error(f"[{task_id}] RPC returned no data")
         raise HTTPException(status_code=500, detail="Failed to update task")
 
-    updated_task = result.data[0]
+    updated_task = result.data
+
+    # Check for error response from function
+    if isinstance(updated_task, dict) and "error" in updated_task:
+        error_msg = updated_task["error"]
+        if "not found" in error_msg.lower():
+            raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=400, detail=error_msg)
+
     logger.info(f"[{task_id}] Task updated successfully: status={updated_task.get('status')}")
 
     return TaskStatusUpdateResponse(
         task_id=task_id,
-        status=updated_task.get("status", task["status"]),
-        updated_at=update_data["updated_at"],
+        status=updated_task.get("status", "unknown"),
+        updated_at=updated_task.get("updated_at", datetime.now(UTC).isoformat()),
         output_length=len(updated_task.get("output") or ""),
     )
 
@@ -204,16 +155,14 @@ async def update_task_status(
     description="Get full details of an agent task including output and status.",
 )
 async def get_task(task_id: str) -> dict:
-    """Get task by ID."""
+    """Get task by ID using daemon_get_task RPC function."""
     supabase = _get_supabase()
 
-    result = (
-        supabase.table("agent_tasks")
-        .select("*")
-        .eq("id", task_id)
-        .maybe_single()
-        .execute()
-    )
+    try:
+        result = supabase.rpc("daemon_get_task", {"p_task_id": task_id}).execute()
+    except Exception as e:
+        logger.error(f"[{task_id}] Failed to get task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get task: {e}")
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -232,10 +181,26 @@ async def list_tasks(
     status: TaskStatus | None = None,
     limit: int = 50,
 ) -> list[dict]:
-    """List tasks for a user."""
+    """List tasks for a user.
+
+    Note: For daemon polling, use daemon_list_pending_tasks RPC instead.
+    This endpoint filters by user_id via RLS for authenticated users.
+    """
     supabase = _get_supabase()
 
-    # Select specific columns to keep line length manageable
+    # For device_id queries from daemon, use RPC function
+    if device_id and status == TaskStatus.PENDING:
+        try:
+            result = supabase.rpc(
+                "daemon_list_pending_tasks",
+                {"p_device_id": device_id},
+            ).execute()
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"Failed to list pending tasks: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # For other queries, use direct table access (RLS filters by user)
     columns = (
         "id, user_id, device_id, agent_type, task_type, "
         "status, created_at, updated_at, started_at, completed_at"
@@ -292,55 +257,33 @@ Returns the updated task status.
     response_model=CancelTaskResponse,
 )
 async def cancel_task(task_id: str) -> CancelTaskResponse:
-    """Cancel a running or pending task."""
+    """Cancel a running or pending task using daemon_cancel_task RPC."""
     supabase = _get_supabase()
 
-    # Fetch current task
-    task_result = (
-        supabase.table("agent_tasks")
-        .select("id, status")
-        .eq("id", task_id)
-        .maybe_single()
-        .execute()
-    )
-
-    if not task_result.data:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    task = task_result.data
-    current_status = task.get("status")
-
-    # Only allow cancelling pending or running tasks
-    cancellable_statuses = (TaskStatus.PENDING.value, TaskStatus.RUNNING.value)
-    if current_status not in cancellable_statuses:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot cancel task in '{current_status}' status. "
-                   f"Only pending or running tasks can be cancelled.",
-        )
-
-    # Update task to cancelled
-    now_iso = datetime.now(UTC).isoformat()
-    result = (
-        supabase.table("agent_tasks")
-        .update({
-            "status": TaskStatus.CANCELLED.value,
-            "completed_at": now_iso,
-            "updated_at": now_iso,
-        })
-        .eq("id", task_id)
-        .execute()
-    )
+    try:
+        result = supabase.rpc("daemon_cancel_task", {"p_task_id": task_id}).execute()
+    except Exception as e:
+        logger.error(f"[{task_id}] Failed to cancel task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel task: {e}")
 
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to cancel task")
 
-    logger.info(f"Task {task_id} cancelled by user")
+    task_result = result.data
+
+    # Check for error response from function
+    if isinstance(task_result, dict) and "error" in task_result:
+        error_msg = task_result["error"]
+        if "not found" in error_msg.lower():
+            raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    logger.info(f"Task {task_id} cancelled")
 
     return CancelTaskResponse(
         task_id=task_id,
         status=TaskStatus.CANCELLED.value,
-        cancelled_at=now_iso,
+        cancelled_at=task_result.get("completed_at", datetime.now(UTC).isoformat()),
     )
 
 
@@ -367,61 +310,29 @@ Only tasks in 'failed', 'timeout', or 'cancelled' status can be retried.
     response_model=RetryTaskResponse,
 )
 async def retry_task(task_id: str) -> RetryTaskResponse:
-    """Retry a failed, timed out, or cancelled task."""
+    """Retry a failed, timed out, or cancelled task using daemon_retry_task RPC."""
     supabase = _get_supabase()
 
-    # Fetch original task
-    task_result = (
-        supabase.table("agent_tasks")
-        .select("*")
-        .eq("id", task_id)
-        .maybe_single()
-        .execute()
-    )
-
-    if not task_result.data:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    task = task_result.data
-    current_status = task.get("status")
-
-    # Only allow retrying failed/timeout/cancelled tasks
-    retryable_statuses = (
-        TaskStatus.FAILED.value,
-        TaskStatus.TIMEOUT.value,
-        TaskStatus.CANCELLED.value,
-    )
-    if current_status not in retryable_statuses:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot retry task in '{current_status}' status. "
-                   f"Only failed, timed out, or cancelled tasks can be retried.",
-        )
-
-    # Create new task with same parameters
-    now_iso = datetime.now(UTC).isoformat()
-    new_task_data = {
-        "user_id": task["user_id"],
-        "device_id": task["device_id"],
-        "agent_type": task["agent_type"],
-        "task_type": task.get("task_type", "prompt"),
-        "payload": task["payload"],
-        "status": TaskStatus.PENDING.value,
-        "created_at": now_iso,
-        "updated_at": now_iso,
-    }
-
-    result = (
-        supabase.table("agent_tasks")
-        .insert(new_task_data)
-        .execute()
-    )
+    try:
+        result = supabase.rpc("daemon_retry_task", {"p_task_id": task_id}).execute()
+    except Exception as e:
+        logger.error(f"[{task_id}] Failed to retry task: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retry task: {e}")
 
     if not result.data:
-        raise HTTPException(status_code=500, detail="Failed to create retry task")
+        raise HTTPException(status_code=500, detail="Failed to retry task")
 
-    new_task = result.data[0]
-    new_task_id = new_task["id"]
+    retry_result = result.data
+
+    # Check for error response from function
+    if isinstance(retry_result, dict) and "error" in retry_result:
+        error_msg = retry_result["error"]
+        if "not found" in error_msg.lower():
+            raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    new_task = retry_result.get("new_task", {})
+    new_task_id = new_task.get("id", "")
 
     logger.info(f"Task {task_id} retried as new task {new_task_id}")
 
@@ -429,7 +340,7 @@ async def retry_task(task_id: str) -> RetryTaskResponse:
         original_task_id=task_id,
         new_task_id=new_task_id,
         status=TaskStatus.PENDING.value,
-        created_at=now_iso,
+        created_at=new_task.get("created_at", datetime.now(UTC).isoformat()),
     )
 
 
@@ -451,45 +362,29 @@ Returns the count and IDs of tasks that were marked as timed out.
     response_model=TimeoutCheckResponse,
 )
 async def check_timeouts() -> TimeoutCheckResponse:
-    """Check for stale tasks and mark them as timed out."""
+    """Check for stale tasks and mark them as timed out using daemon_mark_timeouts RPC."""
     supabase = _get_supabase()
 
-    # Calculate cutoff time (10 minutes ago)
-    from datetime import timedelta
-    cutoff = datetime.now(UTC) - timedelta(minutes=TASK_TIMEOUT_MINUTES)
-    cutoff_iso = cutoff.isoformat()
+    try:
+        result = supabase.rpc(
+            "daemon_mark_timeouts",
+            {"p_timeout_minutes": TASK_TIMEOUT_MINUTES},
+        ).execute()
+    except Exception as e:
+        logger.error(f"Failed to check timeouts: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to check timeouts: {e}")
 
-    # Find stale tasks: pending/running with updated_at older than cutoff
-    # Note: needs_input is excluded - those tasks are waiting for user input
-    stale_query = (
-        supabase.table("agent_tasks")
-        .select("id, status, updated_at")
-        .in_("status", [TaskStatus.PENDING.value, TaskStatus.RUNNING.value])
-        .lt("updated_at", cutoff_iso)
-    )
-
-    stale_result = stale_query.execute()
-    stale_tasks = stale_result.data if stale_result.data else []
-
-    if not stale_tasks:
+    if not result.data:
         return TimeoutCheckResponse(timed_out_count=0, task_ids=[])
 
-    # Mark each stale task as timed out
-    now_iso = datetime.now(UTC).isoformat()
-    timed_out_ids = []
+    timeout_result = result.data
+    timed_out_count = timeout_result.get("timed_out_count", 0)
+    task_ids = timeout_result.get("task_ids", [])
 
-    for task in stale_tasks:
-        task_id = task["id"]
-        supabase.table("agent_tasks").update({
-            "status": TaskStatus.TIMEOUT.value,
-            "error": f"Task timed out after {TASK_TIMEOUT_MINUTES} minutes with no update",
-            "completed_at": now_iso,
-            "updated_at": now_iso,
-        }).eq("id", task_id).execute()
-        timed_out_ids.append(task_id)
-        logger.info(f"Task {task_id} marked as timed out (last update: {task['updated_at']})")
+    if timed_out_count > 0:
+        logger.info(f"Marked {timed_out_count} tasks as timed out: {task_ids}")
 
     return TimeoutCheckResponse(
-        timed_out_count=len(timed_out_ids),
-        task_ids=timed_out_ids,
+        timed_out_count=timed_out_count,
+        task_ids=task_ids,
     )
