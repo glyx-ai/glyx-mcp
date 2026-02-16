@@ -142,6 +142,35 @@ elif command -v pipx &>/dev/null; then
     DAEMON_CMD="pipx run glyx-mcp glyx-daemon"
 fi
 
+# Load Supabase credentials from common locations
+SUPABASE_URL=""
+SUPABASE_ANON_KEY=""
+SUPABASE_SERVICE_ROLE_KEY=""
+
+# Check for env files in order of preference
+for ENV_FILE in "$HOME/.glyx/env" "$HOME/projects/glyx-mcp/.env" "$HOME/.glyx/.env"; do
+    if [[ -f "$ENV_FILE" ]]; then
+        echo -e "${DIM}Loading credentials from $ENV_FILE${NC}"
+        # Source only the Supabase vars
+        while IFS='=' read -r key value; do
+            # Skip comments and empty lines
+            [[ "$key" =~ ^#.*$ ]] && continue
+            [[ -z "$key" ]] && continue
+            # Remove quotes from value
+            value="${value%\"}"
+            value="${value#\"}"
+            value="${value%\'}"
+            value="${value#\'}"
+            case "$key" in
+                SUPABASE_URL) SUPABASE_URL="$value" ;;
+                SUPABASE_ANON_KEY) SUPABASE_ANON_KEY="$value" ;;
+                SUPABASE_SERVICE_ROLE_KEY) SUPABASE_SERVICE_ROLE_KEY="$value" ;;
+            esac
+        done < "$ENV_FILE"
+        break
+    fi
+done
+
 # Start daemon in background if available
 DAEMON_RUNNING=false
 if [[ -n "$DAEMON_CMD" ]]; then
@@ -152,9 +181,19 @@ if [[ -n "$DAEMON_CMD" ]]; then
         rm -f "$DAEMON_PID_FILE"
     fi
 
-    # Start daemon
+    # Check if we have Supabase credentials
+    if [[ -z "$SUPABASE_URL" ]] || [[ -z "$SUPABASE_ANON_KEY" ]]; then
+        echo -e "${YELLOW}Warning: Supabase credentials not found.${NC}"
+        echo -e "${DIM}Create ~/.glyx/env with SUPABASE_URL and SUPABASE_ANON_KEY${NC}"
+    fi
+
+    # Start daemon with all required env vars
     echo -e "${DIM}Starting daemon...${NC}"
-    GLYX_DEVICE_ID="$DEVICE_ID" GLYX_API_URL="$GLYX_API_URL" \
+    GLYX_DEVICE_ID="$DEVICE_ID" \
+    GLYX_API_URL="$GLYX_API_URL" \
+    SUPABASE_URL="$SUPABASE_URL" \
+    SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+    SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
         $DAEMON_CMD --device-id "$DEVICE_ID" > "$DAEMON_LOG_FILE" 2>&1 &
     DAEMON_PID=$!
     echo "$DAEMON_PID" > "$DAEMON_PID_FILE"
