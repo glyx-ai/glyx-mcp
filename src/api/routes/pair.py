@@ -47,13 +47,13 @@ async def get_pair_script() -> str:
 
 PAIR_SCRIPT = r'''#!/bin/bash
 # Glyx Device Pairing Script
-# Usage: curl -sL api.glyx.ai/pair | bash
+# Usage: curl -sL https://glyx-mcp-996426597393.us-central1.run.app/pair | bash
 #
 # This script:
 # 1. Generates a unique device ID
-# 2. Saves it to ~/.glyx/device_id
+# 2. Starts the daemon to listen for tasks
 # 3. Displays a QR code for the Glyx iOS app to scan
-# 4. Starts the daemon to listen for tasks
+# 4. Daemon runs in foreground, streaming task output
 
 set -e
 
@@ -71,9 +71,28 @@ DIM='\033[2m'
 # Config
 GLYX_DIR="$HOME/.glyx"
 DEVICE_ID_FILE="$GLYX_DIR/device_id"
+DAEMON_PID_FILE="$GLYX_DIR/daemon.pid"
+DAEMON_LOG_FILE="$GLYX_DIR/daemon.log"
+GLYX_API_URL="https://glyx-mcp-996426597393.us-central1.run.app"
 
 # Create config directory
 mkdir -p "$GLYX_DIR"
+
+# Cleanup function
+cleanup() {
+    echo ""
+    echo -e "${YELLOW}Shutting down...${NC}"
+    if [[ -f "$DAEMON_PID_FILE" ]]; then
+        DAEMON_PID=$(cat "$DAEMON_PID_FILE")
+        if kill -0 "$DAEMON_PID" 2>/dev/null; then
+            kill "$DAEMON_PID" 2>/dev/null || true
+            echo -e "${DIM}Daemon stopped${NC}"
+        fi
+        rm -f "$DAEMON_PID_FILE"
+    fi
+    exit 0
+}
+trap cleanup INT TERM
 
 # Get or create device ID
 if [[ -f "$DEVICE_ID_FILE" ]]; then
@@ -110,6 +129,46 @@ command -v cursor &>/dev/null && AGENTS="${AGENTS}cursor,"
 command -v codex &>/dev/null && AGENTS="${AGENTS}codex,"
 command -v aider &>/dev/null && AGENTS="${AGENTS}aider,"
 AGENTS="${AGENTS%,}"
+
+# Check for glyx-daemon
+DAEMON_CMD=""
+if command -v glyx-daemon &>/dev/null; then
+    DAEMON_CMD="glyx-daemon"
+elif [[ -f "$HOME/.local/bin/glyx-daemon" ]]; then
+    DAEMON_CMD="$HOME/.local/bin/glyx-daemon"
+elif command -v uvx &>/dev/null; then
+    DAEMON_CMD="uvx --from glyx-mcp glyx-daemon"
+elif command -v pipx &>/dev/null; then
+    DAEMON_CMD="pipx run glyx-mcp glyx-daemon"
+fi
+
+# Start daemon in background if available
+DAEMON_RUNNING=false
+if [[ -n "$DAEMON_CMD" ]]; then
+    # Kill existing daemon if running
+    if [[ -f "$DAEMON_PID_FILE" ]]; then
+        OLD_PID=$(cat "$DAEMON_PID_FILE")
+        kill "$OLD_PID" 2>/dev/null || true
+        rm -f "$DAEMON_PID_FILE"
+    fi
+
+    # Start daemon
+    echo -e "${DIM}Starting daemon...${NC}"
+    GLYX_DEVICE_ID="$DEVICE_ID" GLYX_API_URL="$GLYX_API_URL" \
+        $DAEMON_CMD --device-id "$DEVICE_ID" > "$DAEMON_LOG_FILE" 2>&1 &
+    DAEMON_PID=$!
+    echo "$DAEMON_PID" > "$DAEMON_PID_FILE"
+
+    # Give it a moment to start
+    sleep 1
+
+    if kill -0 "$DAEMON_PID" 2>/dev/null; then
+        DAEMON_RUNNING=true
+        echo -e "${GREEN}Daemon started (PID: $DAEMON_PID)${NC}"
+    else
+        echo -e "${YELLOW}Daemon failed to start. Check $DAEMON_LOG_FILE${NC}"
+    fi
+fi
 
 # Build QR payload
 QR_PAYLOAD="glyx://pair?device_id=${DEVICE_ID}&host=${HOSTNAME}&user=${USER}&name=${HOSTNAME}"
@@ -164,15 +223,35 @@ echo -e "  ${DIM}Device ID:${NC} ${CYAN}${DEVICE_ID}${NC}"
 echo -e "  ${DIM}Host:${NC}      ${BOLD}${HOSTNAME}${NC}"
 echo -e "  ${DIM}User:${NC}      ${USER}"
 [[ -n "$AGENTS" ]] && echo -e "  ${DIM}Agents:${NC}    ${AGENTS}"
+if $DAEMON_RUNNING; then
+    echo -e "  ${DIM}Daemon:${NC}    ${GREEN}● Running${NC}"
+else
+    echo -e "  ${DIM}Daemon:${NC}    ${YELLOW}○ Not running${NC}"
+fi
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo -e "${DIM}After scanning, the daemon will start automatically.${NC}"
-echo -e "${DIM}Or run manually: ${CYAN}glyx-daemon${NC}"
-echo ""
-echo -e "${DIM}Press Ctrl+C to exit${NC}"
 
-# Keep script running so user can scan
-while true; do
-    sleep 1
-done
+if $DAEMON_RUNNING; then
+    echo -e "${GREEN}Ready!${NC} Scan the QR code with Glyx iOS app."
+    echo -e "${DIM}Tasks will execute automatically once paired.${NC}"
+else
+    echo -e "${YELLOW}Daemon not found.${NC} Install with:"
+    echo -e "  ${CYAN}pipx install glyx-mcp${NC}"
+    echo -e "  ${DIM}or${NC}"
+    echo -e "  ${CYAN}uv tool install glyx-mcp${NC}"
+fi
+echo ""
+echo -e "${DIM}Logs: tail -f $DAEMON_LOG_FILE${NC}"
+echo -e "${DIM}Press Ctrl+C to stop${NC}"
+
+# Keep script running, tailing daemon logs
+if $DAEMON_RUNNING; then
+    echo ""
+    echo -e "${DIM}─── Daemon Output ───${NC}"
+    tail -f "$DAEMON_LOG_FILE" 2>/dev/null || while true; do sleep 1; done
+else
+    while true; do
+        sleep 1
+    done
+fi
 '''
