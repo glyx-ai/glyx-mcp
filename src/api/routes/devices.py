@@ -63,7 +63,8 @@ async def heartbeat(device_id: str, body: HeartbeatRequest | None = None) -> Hea
     - 404: Device not found
     - 500: Database error
     """
-    supabase = create_client(settings.supabase_url, settings.supabase_anon_key)
+    # Use service role key to bypass RLS - daemon heartbeats are unauthenticated
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
     now = datetime.now(UTC).isoformat()
 
     try:
@@ -119,7 +120,8 @@ async def get_device_status(device_id: str) -> dict[str, Any]:
     **Errors:**
     - 404: Device not found
     """
-    supabase = create_client(settings.supabase_url, settings.supabase_anon_key)
+    # Use service role key to bypass RLS for status checks
+    supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
 
     try:
         result = (
