@@ -65,7 +65,13 @@ class TaskStatusUpdateResponse(BaseModel):
 
 def _get_supabase():
     """Get Supabase client with service role key for backend operations."""
-    return create_client(settings.supabase_url, settings.supabase_service_role_key)
+    key = settings.supabase_service_role_key
+    if not key:
+        logger.error("SUPABASE_SERVICE_ROLE_KEY is not set!")
+        raise ValueError("Missing SUPABASE_SERVICE_ROLE_KEY")
+    # Log first/last 4 chars for debugging (safe - not full key)
+    logger.debug(f"Using service role key: {key[:4]}...{key[-4:]}")
+    return create_client(settings.supabase_url, key)
 
 
 @router.post(
