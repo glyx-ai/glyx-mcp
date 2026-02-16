@@ -101,7 +101,8 @@ async def update_task_status(
 
     try:
         supabase = _get_supabase()
-        logger.debug(f"[{task_id}] Supabase client created, fetching task...")
+        key = settings.supabase_service_role_key or "NOT_SET"
+        logger.warning(f"[{task_id}] Supabase client created with key: {key[:8]}..., fetching task...")
     except Exception as e:
         logger.error(f"[{task_id}] Failed to create Supabase client: {e}")
         raise HTTPException(status_code=500, detail=f"Database connection failed: {e}")
