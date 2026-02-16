@@ -109,7 +109,7 @@ Required environment variables:
 - [SDK Documentation](https://github.com/htelsiz/glyx-ai/blob/main/docs/SDK.md)
 - [Deployment Guide](https://github.com/htelsiz/glyx-ai/blob/main/docs/DEPLOYMENT.md)
     """,
-    version="0.1.0",
+    version="0.2.0",
     contact={
         "name": "Glyx Team",
         "url": "https://github.com/htelsiz/glyx-ai",
