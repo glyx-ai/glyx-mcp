@@ -381,22 +381,43 @@ ENVIRONMENT                 # development | production
 
 ## Deployment
 
-### Docker
+### Local Development
 ```bash
-docker compose up           # Local dev
-docker build -t glyx-mcp .  # Production build
+docker compose up           # Local dev with hot reload
+uv run glyx-mcp-http        # Native HTTP server
 ```
 
-### Fly.io
-```bash
-./deploy.sh                 # Deploy to Fly.io
-# Endpoint: https://glyx-mcp.fly.dev/
+### Production (Google Cloud Run + Terraform)
+
+**Live endpoint:** `https://glyx-mcp-996426597393.us-central1.run.app`
+
+Pushing to `main` triggers automatic deployment via GitHub Actions:
+
 ```
+GitHub (main) → Build Docker → Artifact Registry → Terraform Apply → Cloud Run
+```
+
+**Infrastructure files:**
+```
+infra/
+├── terraform.tf      # Provider, GCS backend
+├── main.tf           # Cloud Run, Secrets, IAM
+├── variables.tf      # Input variables
+├── outputs.tf        # Service URLs
+└── locals.tf         # Computed values
+```
+
+**Manual deployment:**
+```bash
+cd infra && terraform apply
+```
+
+**Required GitHub Secrets:** See `docs/DEPLOYMENT.md` for full list.
 
 ### Health Checks
 ```bash
-curl https://glyx-mcp.fly.dev/api/healthz
-curl https://glyx-mcp.fly.dev/api/health/detailed
+curl https://glyx-mcp-996426597393.us-central1.run.app/health
+curl https://glyx-mcp-996426597393.us-central1.run.app/docs  # API docs
 ```
 
 ## Related Projects

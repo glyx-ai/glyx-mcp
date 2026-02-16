@@ -220,33 +220,35 @@ uv run python scripts/validate_deployment.py
 
 | Platform | Command | Best For |
 |----------|---------|----------|
-| **Fly.io** | `./deploy.sh` | Production (recommended) |
+| **Cloud Run** | `git push origin main` | Production (auto-deploy via Terraform) |
+| **Fly.io** | `./deploy.sh` | Alternative production |
 | **Docker Compose** | `docker compose up -d` | Local/Self-hosted |
-| **Cloud Run** | `gcloud run deploy` | GCP ecosystem |
+
+**Production endpoint:** `https://glyx-mcp-996426597393.us-central1.run.app`
 
 ### Health & Monitoring
 
 ```bash
 # Basic health check
-curl https://glyx-mcp.fly.dev/api/healthz
+curl https://glyx-mcp-996426597393.us-central1.run.app/health
 
-# Detailed status with component checks
-curl https://glyx-mcp.fly.dev/api/health/detailed
+# API documentation
+curl https://glyx-mcp-996426597393.us-central1.run.app/docs
 
-# Performance metrics
-curl https://glyx-mcp.fly.dev/api/metrics
+# Check API version
+curl -s https://glyx-mcp-996426597393.us-central1.run.app/openapi.json | jq '.info.version'
 ```
 
 ### MCP Client Configuration
 
-**Production (Fly.io):**
+**Production (Cloud Run):**
 ```json
 {
   "mcpServers": {
     "glyx-ai": {
       "transport": {
         "type": "http",
-        "url": "https://glyx-mcp.fly.dev/mcp"
+        "url": "https://glyx-mcp-996426597393.us-central1.run.app/mcp"
       }
     }
   }
