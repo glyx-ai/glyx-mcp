@@ -30,12 +30,9 @@ class Settings(BaseSettings):
 
     # Supabase Configuration
     supabase_url: str | None = None
-    supabase_anon_key: str | None = None
-    supabase_service_role_key: str | None = None  # Deprecated, use daemon user instead
-
-    # Daemon Service User (for backend operations)
-    daemon_user_email: str | None = None
-    daemon_user_password: str | None = None
+    supabase_anon_key: str | None = None  # For client-side operations (sb_publishable_)
+    supabase_secret_key: str | None = None  # For backend operations (sb_secret_), bypasses RLS
+    supabase_service_role_key: str | None = None  # Deprecated, use supabase_secret_key
 
     # GitHub App Configuration
     github_app_id: str | None = None

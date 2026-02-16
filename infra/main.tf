@@ -116,6 +116,22 @@ resource "google_secret_manager_secret_version" "supabase_service_role_key" {
   secret_data = var.supabase_service_role_key
 }
 
+resource "google_secret_manager_secret" "supabase_secret_key" {
+  secret_id = "supabase-secret-key"
+
+  replication {
+    auto {}
+  }
+
+  labels = local.common_labels
+}
+
+resource "google_secret_manager_secret_version" "supabase_secret_key" {
+  secret      = google_secret_manager_secret.supabase_secret_key.id
+  secret_data = var.supabase_secret_key
+}
+
+# DEPRECATED: daemon user secrets - no longer used, kept for state compatibility
 resource "google_secret_manager_secret" "daemon_user_email" {
   secret_id = "daemon-user-email"
 
@@ -128,7 +144,7 @@ resource "google_secret_manager_secret" "daemon_user_email" {
 
 resource "google_secret_manager_secret_version" "daemon_user_email" {
   secret      = google_secret_manager_secret.daemon_user_email.id
-  secret_data = var.daemon_user_email
+  secret_data = var.daemon_user_email != "" ? var.daemon_user_email : "deprecated"
 }
 
 resource "google_secret_manager_secret" "daemon_user_password" {
@@ -143,7 +159,7 @@ resource "google_secret_manager_secret" "daemon_user_password" {
 
 resource "google_secret_manager_secret_version" "daemon_user_password" {
   secret      = google_secret_manager_secret.daemon_user_password.id
-  secret_data = var.daemon_user_password
+  secret_data = var.daemon_user_password != "" ? var.daemon_user_password : "deprecated"
 }
 
 resource "google_secret_manager_secret" "mem0_api_key" {
@@ -250,6 +266,7 @@ resource "google_secret_manager_secret_iam_member" "cloud_run_secrets" {
     google_secret_manager_secret.supabase_url,
     google_secret_manager_secret.supabase_anon_key,
     google_secret_manager_secret.supabase_service_role_key,
+    google_secret_manager_secret.supabase_secret_key,
     google_secret_manager_secret.mem0_api_key,
     google_secret_manager_secret.logfire_token,
     google_secret_manager_secret.knock_api_key,

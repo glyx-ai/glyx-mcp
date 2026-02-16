@@ -66,22 +66,30 @@ variable "supabase_anon_key" {
 }
 
 variable "supabase_service_role_key" {
-  description = "Supabase service role key (deprecated, use daemon user)"
+  description = "Supabase service role key (deprecated, use supabase_secret_key)"
   type        = string
   sensitive   = true
   default     = ""
 }
 
-variable "daemon_user_email" {
-  description = "Daemon service user email for Supabase auth"
+variable "supabase_secret_key" {
+  description = "Supabase secret key (sb_secret_...) for backend operations - bypasses RLS"
   type        = string
   sensitive   = true
 }
 
-variable "daemon_user_password" {
-  description = "Daemon service user password for Supabase auth"
+variable "daemon_user_email" {
+  description = "DEPRECATED: Daemon service user email (no longer used)"
   type        = string
   sensitive   = true
+  default     = ""
+}
+
+variable "daemon_user_password" {
+  description = "DEPRECATED: Daemon service user password (no longer used)"
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 variable "mem0_api_key" {

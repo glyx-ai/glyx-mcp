@@ -29,12 +29,12 @@ locals {
     SUPABASE_URL              = google_secret_manager_secret.supabase_url.secret_id
     SUPABASE_ANON_KEY         = google_secret_manager_secret.supabase_anon_key.secret_id
     SUPABASE_SERVICE_ROLE_KEY = google_secret_manager_secret.supabase_service_role_key.secret_id
+    SUPABASE_SECRET_KEY       = google_secret_manager_secret.supabase_secret_key.secret_id
     MEM0_API_KEY              = google_secret_manager_secret.mem0_api_key.secret_id
     LOGFIRE_TOKEN             = google_secret_manager_secret.logfire_token.secret_id
     KNOCK_API_KEY             = google_secret_manager_secret.knock_api_key.secret_id
     LANGFUSE_SECRET_KEY       = google_secret_manager_secret.langfuse_secret_key.secret_id
     LANGFUSE_PUBLIC_KEY       = google_secret_manager_secret.langfuse_public_key.secret_id
-    DAEMON_USER_EMAIL         = google_secret_manager_secret.daemon_user_email.secret_id
-    DAEMON_USER_PASSWORD      = google_secret_manager_secret.daemon_user_password.secret_id
+    # DEPRECATED: daemon user secrets removed - using supabase_secret_key instead
   }
 }
