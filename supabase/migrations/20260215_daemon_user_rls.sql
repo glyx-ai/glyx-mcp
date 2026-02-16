@@ -10,36 +10,23 @@ DROP POLICY IF EXISTS "Users can update own tasks" ON agent_tasks;
 DROP POLICY IF EXISTS "Daemon can view all tasks" ON agent_tasks;
 DROP POLICY IF EXISTS "Daemon can update all tasks" ON agent_tasks;
 DROP POLICY IF EXISTS "Users can insert own tasks" ON agent_tasks;
+DROP POLICY IF EXISTS "Select: owner or daemon" ON agent_tasks;
+DROP POLICY IF EXISTS "Insert: owner or daemon" ON agent_tasks;
+DROP POLICY IF EXISTS "Update: owner or daemon" ON agent_tasks;
 
--- Users can view their own tasks
-CREATE POLICY "Users can view own tasks" ON agent_tasks
+-- Combined policies: owner OR daemon can access
+-- Uses auth.email() to check for daemon user
+CREATE POLICY "Select: owner or daemon" ON agent_tasks
 FOR SELECT USING (
-    auth.uid() = user_id
+    auth.uid() = user_id OR auth.email() = 'daemon@glyx.ai'
 );
 
--- Users can insert tasks for themselves
-CREATE POLICY "Users can insert own tasks" ON agent_tasks
+CREATE POLICY "Insert: owner or daemon" ON agent_tasks
 FOR INSERT WITH CHECK (
-    auth.uid() = user_id
+    auth.uid() = user_id OR auth.email() = 'daemon@glyx.ai'
 );
 
--- Users can update their own tasks
-CREATE POLICY "Users can update own tasks" ON agent_tasks
+CREATE POLICY "Update: owner or daemon" ON agent_tasks
 FOR UPDATE USING (
-    auth.uid() = user_id
+    auth.uid() = user_id OR auth.email() = 'daemon@glyx.ai'
 );
-
--- Daemon service user can view ALL tasks (identified by email)
-CREATE POLICY "Daemon can view all tasks" ON agent_tasks
-FOR SELECT USING (
-    auth.jwt() ->> 'email' = 'daemon@glyx.ai'
-);
-
--- Daemon service user can update ALL tasks
-CREATE POLICY "Daemon can update all tasks" ON agent_tasks
-FOR UPDATE USING (
-    auth.jwt() ->> 'email' = 'daemon@glyx.ai'
-);
-
-COMMENT ON POLICY "Daemon can view all tasks" ON agent_tasks IS 'Allows daemon service user to read any task for status updates';
-COMMENT ON POLICY "Daemon can update all tasks" ON agent_tasks IS 'Allows daemon service user to update task status and output';
