@@ -19,6 +19,7 @@ locals {
   env_vars = {
     ENVIRONMENT       = var.environment
     LANGFUSE_BASE_URL = var.langfuse_base_url
+    DEPLOY_VERSION    = "2026-02-16-v2"  # Force new revision on secret updates
   }
 
   # Secret environment variables (references to Secret Manager)
