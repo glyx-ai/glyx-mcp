@@ -34,5 +34,7 @@ locals {
     KNOCK_API_KEY             = google_secret_manager_secret.knock_api_key.secret_id
     LANGFUSE_SECRET_KEY       = google_secret_manager_secret.langfuse_secret_key.secret_id
     LANGFUSE_PUBLIC_KEY       = google_secret_manager_secret.langfuse_public_key.secret_id
+    DAEMON_USER_EMAIL         = google_secret_manager_secret.daemon_user_email.secret_id
+    DAEMON_USER_PASSWORD      = google_secret_manager_secret.daemon_user_password.secret_id
   }
 }

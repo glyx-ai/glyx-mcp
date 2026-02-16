@@ -84,6 +84,8 @@ jobs:
           TF_VAR_supabase_url: ${{ secrets.SUPABASE_URL }}
           TF_VAR_supabase_anon_key: ${{ secrets.SUPABASE_ANON_KEY }}
           TF_VAR_supabase_service_role_key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TF_VAR_daemon_user_email: ${{ secrets.DAEMON_USER_EMAIL }}
+          TF_VAR_daemon_user_password: ${{ secrets.DAEMON_USER_PASSWORD }}
           TF_VAR_mem0_api_key: ${{ secrets.MEM0_API_KEY }}
           TF_VAR_logfire_token: ${{ secrets.LOGFIRE_TOKEN }}
           TF_VAR_knock_api_key: ${{ secrets.KNOCK_API_KEY }}

@@ -24,7 +24,11 @@ openrouter_api_key = "sk-or-..."
 # Supabase Configuration
 supabase_url              = "https://your-project.supabase.co"
 supabase_anon_key         = "eyJ..."
-supabase_service_role_key = "eyJ..."
+supabase_service_role_key = ""  # Deprecated - use daemon user instead
+
+# Daemon Service User (for backend operations with proper RLS)
+daemon_user_email    = "daemon@glyx.ai"
+daemon_user_password = "generate-a-strong-password"
 
 # Optional Services
 mem0_api_key  = ""

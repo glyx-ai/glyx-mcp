@@ -66,7 +66,20 @@ variable "supabase_anon_key" {
 }
 
 variable "supabase_service_role_key" {
-  description = "Supabase service role key"
+  description = "Supabase service role key (deprecated, use daemon user)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "daemon_user_email" {
+  description = "Daemon service user email for Supabase auth"
+  type        = string
+  sensitive   = true
+}
+
+variable "daemon_user_password" {
+  description = "Daemon service user password for Supabase auth"
   type        = string
   sensitive   = true
 }
