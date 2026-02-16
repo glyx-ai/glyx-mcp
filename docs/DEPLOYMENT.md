@@ -225,44 +225,144 @@ docker compose -f compose.production.yml up -d
 
 ---
 
-### Google Cloud Run
+### Google Cloud Run (Production)
 
-Deploy to Google Cloud Run for serverless scaling:
+The production deployment uses **Terraform + GitHub Actions** for infrastructure-as-code CI/CD.
 
-#### 1. Build and Push Container
+#### Architecture
 
-```bash
-# Build for Cloud Run
-gcloud builds submit --tag gcr.io/YOUR-PROJECT-ID/glyx-mcp
-
-# Or use Docker:
-docker build -t gcr.io/YOUR-PROJECT-ID/glyx-mcp .
-docker push gcr.io/YOUR-PROJECT-ID/glyx-mcp
+```
+GitHub (main branch)
+    ↓ push triggers workflow
+GitHub Actions
+    ├── Build Docker image → Artifact Registry
+    └── Terraform Apply → Cloud Run service
+            ├── Secrets from Secret Manager
+            └── IAM via Workload Identity Federation
 ```
 
-#### 2. Deploy to Cloud Run
+**Live endpoint:** `https://glyx-mcp-996426597393.us-central1.run.app`
 
-```bash
-gcloud run deploy glyx-mcp \
-  --image gcr.io/YOUR-PROJECT-ID/glyx-mcp \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --set-env-vars OPENAI_API_KEY=sk-...,ANTHROPIC_API_KEY=sk-ant-... \
-  --memory 1Gi \
-  --cpu 1
+#### CI/CD Pipeline
+
+Pushing to `main` automatically:
+1. Builds Docker image with commit SHA tag
+2. Pushes to Artifact Registry (`us-central1-docker.pkg.dev/cs-poc-fu4tioc8i2w4ev3epp69dm3/glyx`)
+3. Runs `terraform apply` to update Cloud Run service
+4. Deploys new revision with zero downtime
+
+#### Infrastructure (Terraform)
+
+All infrastructure is managed in `/infra`:
+
+```
+infra/
+├── terraform.tf      # Provider config, GCS backend
+├── main.tf           # Resources (Cloud Run, Secrets, IAM)
+├── variables.tf      # Input variables
+├── outputs.tf        # Service URLs
+└── locals.tf         # Computed values
 ```
 
-#### 3. Set Secrets (Secure Alternative)
+**Resources managed by Terraform:**
+- Artifact Registry repository
+- Secret Manager secrets (11 secrets)
+- Cloud Run v2 service
+- Service account with secret access
+- Public invoker IAM binding
+
+**Resources managed outside Terraform (via GCP Console):**
+- Workload Identity Federation pool/provider
+- GitHub Actions service account
+- Project-level IAM bindings
+- GCP APIs (already enabled)
+
+#### GitHub Actions Service Account
+
+The `github-actions@cs-poc-fu4tioc8i2w4ev3epp69dm3.iam.gserviceaccount.com` SA requires:
+
+| Role | Purpose |
+|------|---------|
+| `roles/run.admin` | Deploy Cloud Run services |
+| `roles/artifactregistry.admin` | Push images, manage IAM |
+| `roles/secretmanager.admin` | Manage secrets |
+| `roles/iam.serviceAccountUser` | Act as Cloud Run SA |
+| `roles/iam.serviceAccountViewer` | Read SA metadata |
+| `roles/storage.objectAdmin` | Terraform state in GCS |
+
+#### GitHub Secrets Required
+
+Set these in GitHub repo settings → Secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | WIF provider name |
+| `GCP_SERVICE_ACCOUNT` | GitHub Actions SA email |
+| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `OPENROUTER_API_KEY` | OpenRouter API key |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
+| `MEM0_API_KEY` | Mem0 API key |
+| `LOGFIRE_TOKEN` | Logfire observability token |
+| `KNOCK_API_KEY` | Knock notifications API key |
+| `LANGFUSE_SECRET_KEY` | Langfuse secret key |
+| `LANGFUSE_PUBLIC_KEY` | Langfuse public key |
+
+#### Manual Deployment
+
+To deploy manually (e.g., from local machine):
 
 ```bash
-# Create secrets
-echo -n "sk-..." | gcloud secrets create openai-api-key --data-file=-
+cd infra
 
-# Deploy with secrets
-gcloud run deploy glyx-mcp \
-  --image gcr.io/YOUR-PROJECT-ID/glyx-mcp \
-  --update-secrets OPENAI_API_KEY=openai-api-key:latest
+# Initialize Terraform
+terraform init
+
+# Plan changes
+terraform plan \
+  -var="project_id=cs-poc-fu4tioc8i2w4ev3epp69dm3" \
+  -var="anthropic_api_key=$ANTHROPIC_API_KEY" \
+  # ... other vars
+
+# Apply
+terraform apply
+```
+
+#### Troubleshooting CI/CD
+
+**Terraform state lock:**
+```bash
+# If workflow cancelled mid-apply, delete lock file:
+gsutil rm gs://glyx-terraform-state/glyx-mcp/default.tflock
+```
+
+**Permission denied errors:**
+```bash
+# Add missing role to GitHub Actions SA:
+gcloud projects add-iam-policy-binding cs-poc-fu4tioc8i2w4ev3epp69dm3 \
+  --member="serviceAccount:github-actions@cs-poc-fu4tioc8i2w4ev3epp69dm3.iam.gserviceaccount.com" \
+  --role="roles/MISSING_ROLE" \
+  --condition=None
+```
+
+**View deployment logs:**
+```bash
+gh run view <run-id> --log
+```
+
+#### Verify Deployment
+
+```bash
+# Check API version
+curl -s https://glyx-mcp-996426597393.us-central1.run.app/openapi.json | jq '.info.version'
+
+# Check health
+curl https://glyx-mcp-996426597393.us-central1.run.app/health
+
+# View API docs
+open https://glyx-mcp-996426597393.us-central1.run.app/docs
 ```
 
 ---
