@@ -499,11 +499,24 @@ class GlyxDaemon:
 
     def _on_task_insert(self, payload: dict[str, Any]) -> None:
         """Handle new task insertion from Realtime."""
-        logger.info(f"[Realtime] Received INSERT event: {payload.get('eventType', 'unknown')}")
+        # Log full payload structure for debugging
+        logger.info(f"[Realtime] Received event - keys: {list(payload.keys())}")
+        logger.debug(f"[Realtime] Full payload: {payload}")
 
+        # supabase-py v2 uses 'data' > 'record' structure, not 'new'
+        # Try both formats for compatibility
         new_task = payload.get("new", {})
         if not new_task:
-            logger.warning("[Realtime] No 'new' data in payload")
+            # Try v2 format: payload > data > record
+            data = payload.get("data", {})
+            if isinstance(data, dict):
+                new_task = data.get("record", {})
+            # Also try direct 'record' key
+            if not new_task:
+                new_task = payload.get("record", {})
+
+        if not new_task:
+            logger.warning(f"[Realtime] No task data found in payload. Keys: {list(payload.keys())}")
             return
 
         task_id = new_task.get("id")
