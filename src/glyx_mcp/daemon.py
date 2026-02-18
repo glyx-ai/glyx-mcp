@@ -20,7 +20,11 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 from typing import Any
+
+# Suppress supabase-py deprecation warnings about timeout/verify params
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="supabase")
 
 import httpx
 from glyx_python_sdk.settings import settings

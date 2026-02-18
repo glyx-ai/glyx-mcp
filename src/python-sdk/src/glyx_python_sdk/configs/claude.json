@@ -13,9 +13,9 @@
       "model": {
         "flag": "--model",
         "required": false,
-        "description": "Model to use",
+        "description": "Model to use (aliases: opus, sonnet, haiku)",
         "type": "string",
-        "default": "claude-opus-4.5"
+        "default": "sonnet"
       },
       "max_turns": {
         "flag": "--max-turns",
