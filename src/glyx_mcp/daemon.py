@@ -473,7 +473,11 @@ class GlyxDaemon:
         # Normalize device_id to lowercase for consistent comparison
         # (iOS saves UUIDs as uppercase, but QR/file uses lowercase)
         self.device_id = device_id.lower()
-        self.api_base_url = api_base_url or os.environ.get("GLYX_API_URL", "https://glyx.ai")
+        # Use Cloud Run directly - Vercel protection blocks API calls
+        self.api_base_url = api_base_url or os.environ.get(
+            "GLYX_API_URL",
+            "https://glyx-mcp-996426597393.us-central1.run.app"
+        )
         self.supabase: AsyncClient | None = None
         self.supabase_sync: Client | None = None  # For polling
         self.executor = TaskExecutor(self.api_base_url)
@@ -776,8 +780,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--api-url",
-        default=os.environ.get("GLYX_API_URL", "https://glyx.ai"),
-        help="API base URL (default: https://glyx.ai)",
+        default=os.environ.get("GLYX_API_URL", "https://glyx-mcp-996426597393.us-central1.run.app"),
+        help="API base URL (default: Cloud Run backend)",
     )
     parser.add_argument(
         "--register",
