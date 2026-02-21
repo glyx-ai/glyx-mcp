@@ -35,9 +35,11 @@ def _send_agent_notification(
 
     Triggers one of: agent-start, agent-completed, agent-error
     """
+    logger.info(f"[KNOCK] _send_agent_notification: workflow={workflow_key}, user={user_id}, task={task_id}")
+
     api_key = settings.knock_api_key
     if not api_key:
-        logger.debug(f"[KNOCK] No API key configured, skipping {workflow_key} notification")
+        logger.warning(f"[KNOCK] No API key configured, skipping {workflow_key} notification")
         return
 
     knock = Knock(api_key=api_key)

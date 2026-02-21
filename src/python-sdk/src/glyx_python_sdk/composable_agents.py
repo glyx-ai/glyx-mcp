@@ -61,9 +61,15 @@ def _send_agent_notification(
 
     Workflow keys: agent-start, agent-needs-input, agent-completed, agent-error
     """
+    logger.info(f"[KNOCK] _send_agent_notification called: workflow={workflow_key}, user_id={user_id}")
+
+    if not user_id:
+        logger.warning(f"[KNOCK] No user_id provided, skipping {workflow_key} notification")
+        return
+
     knock = _get_knock_client()
     if not knock:
-        logger.debug("[KNOCK] No API key configured, skipping notification")
+        logger.warning("[KNOCK] No API key configured (KNOCK_API_KEY not set), skipping notification")
         return
 
     event_type_map = {
@@ -415,18 +421,7 @@ class ComposableAgent:
         task_summary = task_config.get("prompt", "")[:100] or "Agent task"
 
         logger.info(f"[AGENT STREAM] Starting streaming execution for {self.config.agent_key} (model={model})")
-
-        # Send iOS push notification via Knock
-        if user_id:
-            _send_agent_notification(
-                workflow_key="agent-start",
-                user_id=user_id,
-                agent_type=self.config.agent_key,
-                session_id=session_id,
-                task_summary=task_summary,
-                urgency="low",
-                device_name=device_name,
-            )
+        # Note: Notifications are sent by the backend API when daemon calls update_task_status
 
         cmd = [self.config.command] + self._build_cli_args(task_config)
 
@@ -559,21 +554,7 @@ class ComposableAgent:
 
         execution_time = time() - start_time
         exit_code = process.returncode if process.returncode is not None else -1
-
-        # Send iOS push notification via Knock
-        if user_id:
-            is_error = exit_code != 0
-            _send_agent_notification(
-                workflow_key="agent-error" if is_error else "agent-completed",
-                user_id=user_id,
-                agent_type=self.config.agent_key,
-                session_id=session_id,
-                task_summary=task_summary,
-                urgency="high" if is_error else "medium",
-                execution_time_s=execution_time,
-                exit_code=exit_code,
-                device_name=device_name,
-            )
+        # Note: Notifications are sent by the backend API when daemon calls update_task_status
 
         yield {
             "type": "agent_complete",

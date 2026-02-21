@@ -378,6 +378,7 @@ class TaskExecutor:
         device_name = task.get("device_name")
 
         logger.info(f"[{task_id}] ▶ EXECUTING (async): agent={agent_type}, type={task_type}")
+        logger.info(f"[{task_id}] user_id={user_id}, device_name={device_name}")
 
         cwd = payload.get("cwd") or payload.get("working_dir")
 
@@ -647,6 +648,8 @@ class GlyxDaemon:
         """Run the daemon."""
         logger.info(f"Starting Glyx Daemon for device: {self.device_id}")
         logger.info(f"API base URL: {self.api_base_url}")
+        logger.info(f"Knock API key configured: {bool(settings.knock_api_key)}")
+        logger.info(f"Supabase URL: {settings.supabase_url[:50] if settings.supabase_url else 'NOT SET'}...")
 
         self.supabase = await self._create_supabase_client()
         self.supabase_sync = self._create_sync_client()
