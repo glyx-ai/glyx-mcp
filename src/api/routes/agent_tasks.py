@@ -13,11 +13,67 @@ from enum import StrEnum
 
 from fastapi import APIRouter, HTTPException
 from glyx_python_sdk.settings import settings
+from knockapi import Knock
 from pydantic import BaseModel, Field
 
 from supabase import create_client
 
 logger = logging.getLogger(__name__)
+
+
+def _send_agent_notification(
+    user_id: str,
+    task_id: str,
+    workflow_key: str,
+    agent_type: str = "agent",
+    task_summary: str = "",
+    device_name: str | None = None,
+    error_message: str | None = None,
+    execution_time_s: float | None = None,
+) -> None:
+    """Send agent lifecycle notification via Knock.
+
+    Triggers one of: agent-start, agent-completed, agent-error
+    """
+    api_key = settings.knock_api_key
+    if not api_key:
+        logger.debug(f"[KNOCK] No API key configured, skipping {workflow_key} notification")
+        return
+
+    knock = Knock(api_key=api_key)
+
+    # Map workflow key to event type
+    event_type_map = {
+        "agent-start": "started",
+        "agent-completed": "completed",
+        "agent-error": "error",
+    }
+
+    payload = {
+        "event_type": event_type_map.get(workflow_key, workflow_key),
+        "agent_type": agent_type,
+        "session_id": task_id,  # For deep linking: glyx://agent/{session_id}
+        "task_summary": task_summary[:200] if task_summary else "",
+        "urgency": "high" if workflow_key == "agent-error" else "medium",
+        "action_required": workflow_key == "agent-error",
+    }
+
+    if device_name:
+        payload["device_name"] = device_name
+    if error_message:
+        payload["error_message"] = error_message[:500]
+    if execution_time_s is not None:
+        payload["execution_time_s"] = execution_time_s
+
+    try:
+        knock.workflows.trigger(
+            key=workflow_key,
+            recipients=[user_id],
+            data=payload,
+        )
+        logger.info(f"[KNOCK] Triggered {workflow_key} for user {user_id}, task {task_id}")
+    except Exception as e:
+        logger.warning(f"[KNOCK] Failed to send {workflow_key} notification: {e}")
 
 router = APIRouter(prefix="/api/agent-tasks", tags=["Agent Tasks"])
 
@@ -108,9 +164,11 @@ async def update_task_status(
         logger.error(f"[{task_id}] Failed to create Supabase client: {e}")
         raise HTTPException(status_code=500, detail=f"Database connection failed: {e}")
 
-    # First, get the existing task to append output
+    # First, get the existing task to append output and get metadata for notifications
     try:
-        existing = supabase.table("agent_tasks").select("output, status").eq("id", task_id).single().execute()
+        existing = supabase.table("agent_tasks").select(
+            "output, status, user_id, agent_type, device_id, payload, created_at"
+        ).eq("id", task_id).single().execute()
     except Exception as e:
         logger.error(f"[{task_id}] Task not found: {e}")
         raise HTTPException(status_code=404, detail="Task not found")
@@ -119,6 +177,13 @@ async def update_task_status(
         raise HTTPException(status_code=404, detail="Task not found")
 
     existing_output = existing.data.get("output") or ""
+    existing_status = existing.data.get("status")
+    user_id = existing.data.get("user_id")
+    agent_type = existing.data.get("agent_type", "agent")
+    device_id = existing.data.get("device_id")
+    payload = existing.data.get("payload") or {}
+    task_summary = payload.get("prompt", "")[:200] if isinstance(payload, dict) else ""
+    created_at = existing.data.get("created_at")
     now = datetime.now(UTC).isoformat()
 
     # Build update payload
@@ -155,11 +220,54 @@ async def update_task_status(
         raise HTTPException(status_code=500, detail="Failed to update task")
 
     updated_task = result.data[0]
-    logger.info(f"[{task_id}] Task updated successfully: status={updated_task.get('status')}")
+    new_status = updated_task.get("status")
+    logger.info(f"[{task_id}] Task updated successfully: status={new_status}")
+
+    # Send push notifications for status transitions (only if user_id is available)
+    if user_id and body.status and existing_status != body.status.value:
+        # Calculate execution time for completed/failed tasks
+        execution_time_s = None
+        if created_at and body.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+            try:
+                created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                execution_time_s = (datetime.now(UTC) - created).total_seconds()
+            except Exception:
+                pass
+
+        if body.status == TaskStatus.RUNNING:
+            _send_agent_notification(
+                user_id=user_id,
+                task_id=task_id,
+                workflow_key="agent-start",
+                agent_type=agent_type,
+                task_summary=task_summary,
+                device_name=device_id,
+            )
+        elif body.status == TaskStatus.COMPLETED:
+            _send_agent_notification(
+                user_id=user_id,
+                task_id=task_id,
+                workflow_key="agent-completed",
+                agent_type=agent_type,
+                task_summary=task_summary,
+                device_name=device_id,
+                execution_time_s=execution_time_s,
+            )
+        elif body.status == TaskStatus.FAILED:
+            _send_agent_notification(
+                user_id=user_id,
+                task_id=task_id,
+                workflow_key="agent-error",
+                agent_type=agent_type,
+                task_summary=task_summary,
+                device_name=device_id,
+                error_message=body.error,
+                execution_time_s=execution_time_s,
+            )
 
     return TaskStatusUpdateResponse(
         task_id=task_id,
-        status=updated_task.get("status", "unknown"),
+        status=new_status or "unknown",
         updated_at=updated_task.get("updated_at", now),
         output_length=len(updated_task.get("output") or ""),
     )
