@@ -61,20 +61,16 @@ def is_tty() -> bool:
 def should_use_rich() -> bool:
     """Determine if Rich logging should be used.
 
-    Returns True if:
-    - GLYX_RICH_LOGS=1 is set (force enable)
-    - Running in a TTY and GLYX_RICH_LOGS is not explicitly disabled
+    Returns True by default. Only disabled if GLYX_RICH_LOGS=0.
     """
     env_value = os.environ.get("GLYX_RICH_LOGS", "").lower()
 
-    # Explicit enable/disable
-    if env_value in ("1", "true", "yes"):
-        return True
+    # Only disable if explicitly set to false
     if env_value in ("0", "false", "no"):
         return False
 
-    # Auto-detect: use Rich in TTY, plain in production/docker
-    return is_tty()
+    # Always use Rich by default
+    return True
 
 
 def configure_logging(
