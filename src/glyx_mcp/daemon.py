@@ -26,6 +26,11 @@ from typing import Any
 # Suppress supabase-py deprecation warnings about timeout/verify params
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="supabase")
 
+# Configure Rich logging before any other imports that use logging
+from glyx_mcp.logging import configure_logging, get_logger
+
+configure_logging()
+
 import httpx
 from glyx_python_sdk.settings import settings
 from glyx_python_sdk.composable_agents import ComposableAgent
@@ -47,12 +52,7 @@ AGENT_KEY_MAP: dict[str, AgentKey] = {
     "grok": AgentKey.GROK,
 }
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger("glyx-daemon")
+logger = get_logger("glyx-daemon")
 
 
 class TaskExecutor:
@@ -802,7 +802,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
+        configure_logging(level=logging.DEBUG)
 
     device_id = args.device_id
 
