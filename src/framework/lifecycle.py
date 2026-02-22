@@ -23,7 +23,14 @@ class FeatureLifecycle:
 
     def __init__(self):
         self.linear = LinearTools()
-        self.knock_client = Knock(api_key=settings.knock_api_key)
+        self._knock_client: Knock | None = None
+
+    @property
+    def knock_client(self) -> Knock:
+        """Lazy-init Knock client to avoid errors when API key not set."""
+        if self._knock_client is None:
+            self._knock_client = Knock(api_key=settings.knock_api_key)
+        return self._knock_client
 
     async def start_feature(self, name: str, team_id: Optional[str] = None) -> str:
         """
