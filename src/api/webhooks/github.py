@@ -10,7 +10,16 @@ from api.models.notifications import GitHubNotificationPayload
 
 logger = logging.getLogger(__name__)
 
-knock_client = Knock(api_key=settings.knock_api_key)
+# Lazy-initialized to avoid import-time errors in tests
+_knock_client: Knock | None = None
+
+
+def get_knock_client() -> Knock:
+    """Get or create the Knock client (lazy initialization)."""
+    global _knock_client
+    if _knock_client is None:
+        _knock_client = Knock(api_key=settings.knock_api_key)
+    return _knock_client
 
 
 def get_account_name(account: dict | None) -> str:
@@ -59,7 +68,7 @@ async def create_activity(
         content=content,
         metadata=metadata,
     )
-    knock_client.workflows.trigger(
+    get_knock_client().workflows.trigger(
         key="github-activity",
         recipients=["github-channel"],
         data=payload.model_dump(exclude_none=True),

@@ -19,7 +19,16 @@ from knockapi import Knock
 
 logger = logging.getLogger(__name__)
 
-knock_client = Knock(api_key=settings.knock_api_key)
+# Lazy-initialized to avoid import-time errors in tests
+_knock_client: Knock | None = None
+
+
+def get_knock_client() -> Knock:
+    """Get or create the Knock client (lazy initialization)."""
+    global _knock_client
+    if _knock_client is None:
+        _knock_client = Knock(api_key=settings.knock_api_key)
+    return _knock_client
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks"])
 
@@ -93,7 +102,7 @@ async def api_create_task(body: dict) -> TaskResponse:
         url=f"/tasks/{task_id}",
     )
     # Assuming 'task-created' workflow exists in Knock
-    knock_client.workflows.trigger(
+    get_knock_client().workflows.trigger(
         key="task-created",
         recipients=[payload.assignee_id or "system-user"],
         data=payload.model_dump(exclude_none=True),
