@@ -151,7 +151,8 @@ echo ""
 echo "Starting server..."
 echo ""
 
-# Start unified server with Rich logs
+# Sync dependencies and start server
 cd "$REPO_DIR"
-GLYX_DEVICE_ID="$DEVICE_ID" GLYX_RICH_LOGS=1 exec uv run task dev
+uv sync
+GLYX_DEVICE_ID="$DEVICE_ID" exec uv run task dev
 '''
