@@ -153,6 +153,6 @@ echo ""
 
 # Sync dependencies and start server
 cd "$REPO_DIR"
-uv sync
+uv sync --extra dev
 GLYX_DEVICE_ID="$DEVICE_ID" exec uv run task dev
 '''
