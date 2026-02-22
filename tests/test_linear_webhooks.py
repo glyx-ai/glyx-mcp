@@ -10,14 +10,16 @@ def mock_supabase():
 
 
 @pytest.fixture
-def mock_notification_service():
-    with patch("api.notifications.notification_service") as mock:
-        mock.send_feature_notification = AsyncMock()
-        yield mock
+def mock_knock_client():
+    with patch("api.webhooks.linear.get_knock_client") as mock:
+        mock_client = MagicMock()
+        mock_client.workflows.trigger = MagicMock()
+        mock.return_value = mock_client
+        yield mock_client
 
 
 @pytest.mark.asyncio
-async def test_handle_issue_event_create(mock_supabase, mock_notification_service):
+async def test_handle_issue_event_create(mock_supabase, mock_knock_client):
     """Test handling of issue create event with Pydantic model."""
     issue = LinearIssue(
         id="issue-id",
@@ -32,9 +34,14 @@ async def test_handle_issue_event_create(mock_supabase, mock_notification_servic
     result = await handle_issue_event("create", issue, mock_supabase)
 
     assert "Processed Issue create: GLYX-123" in result
-    mock_notification_service.send_feature_notification.assert_called_once_with(
-        event="linear.issue.create", feature_name="Test Issue", linear_info="GLYX-123: Test Issue (Priority: 1)"
-    )
+
+    # Verify Knock notification was triggered
+    mock_knock_client.workflows.trigger.assert_called_once()
+    call_kwargs = mock_knock_client.workflows.trigger.call_args.kwargs
+    assert call_kwargs["key"] == "linear-issue"
+    assert call_kwargs["data"]["event_type"] == "linear.issue.create"
+    assert call_kwargs["data"]["identifier"] == "GLYX-123"
+    assert call_kwargs["data"]["title"] == "Test Issue"
 
 
 @pytest.mark.asyncio

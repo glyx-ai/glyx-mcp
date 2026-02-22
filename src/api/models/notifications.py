@@ -31,6 +31,21 @@ class GitHubNotificationPayload(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
+class LinearNotificationPayload(BaseModel):
+    """Payload for Linear issue notifications."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    event_type: str  # "linear.issue.create", "linear.issue.update"
+    issue_id: str
+    identifier: str  # e.g., "GLYX-123"
+    title: str
+    priority: int | None = None
+    url: str | None = None
+    team_id: str | None = None
+    state_id: str | None = None
+
+
 class AgentNotificationPayload(BaseModel):
     """Payload for agent lifecycle notifications (iOS push via Knock).
 

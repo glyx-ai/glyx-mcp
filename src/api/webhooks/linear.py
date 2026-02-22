@@ -7,8 +7,21 @@ from api.integrations.linear import handle_session_task
 from glyx_python_sdk import settings
 from api.webhooks.base import WebhookConfig, create_webhook_router, log_webhook_event
 from api.models.linear import LinearWebhookPayload, LinearIssue, LinearProject
+from api.models.notifications import LinearNotificationPayload
+from knockapi import Knock
 
 logger = logging.getLogger(__name__)
+
+# Lazy-initialized to avoid import-time errors in tests
+_knock_client: Knock | None = None
+
+
+def get_knock_client() -> Knock:
+    """Get or create the Knock client (lazy initialization)."""
+    global _knock_client
+    if _knock_client is None:
+        _knock_client = Knock(api_key=settings.knock_api_key)
+    return _knock_client
 
 
 async def handle_session_created(
@@ -103,17 +116,23 @@ async def process_linear_event(payload: dict, supabase: Any) -> str:
 
 async def handle_issue_event(action: str, issue: LinearIssue, supabase: Any) -> str:
     """Handle Issue events (create, update)."""
-    # Notify via NotificationService
-    from api.notifications import notification_service
-
     # Map Linear action to logical event
     # If priority is high (1) or urgent (0), notify logic might trigger
     if action == "create" or (action == "update" and issue.priority <= 1):
-        await notification_service.send_feature_notification(
-            event=f"linear.issue.{action}",
-            feature_name=issue.title,
-            linear_info=f"{issue.identifier}: {issue.title} (Priority: {issue.priority})",
+        payload = LinearNotificationPayload(
+            event_type=f"linear.issue.{action}",
+            issue_id=issue.id,
+            identifier=issue.identifier,
+            title=issue.title,
+            priority=issue.priority,
+            url=issue.url,
         )
+        get_knock_client().workflows.trigger(
+            key="linear-issue",
+            recipients=["linear-channel"],
+            data=payload.model_dump(exclude_none=True),
+        )
+        logger.info(f"Triggered linear-issue notification for {issue.identifier}")
 
     return f"Processed Issue {action}: {issue.identifier}"
 
