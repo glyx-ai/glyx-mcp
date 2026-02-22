@@ -46,8 +46,10 @@ class SupabaseTokenVerifier(TokenVerifier):
     async def verify_token(self, token: str) -> AccessToken | None:
         """Validate token by calling Supabase auth API."""
         try:
+            logger.info(f"[AUTH] Verifying token, ANON_KEY set: {bool(SUPABASE_ANON_KEY)}")
             client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
             response = client.auth.get_user(token)
+            logger.info(f"[AUTH] get_user response: {response.user is not None}")
             if response.user:
                 user_id = str(response.user.id)
                 return AccessToken(
@@ -100,6 +102,7 @@ mcp.tool(orchestrate)
 @mcp.tool()
 async def dispatch_task(device_id: str, agent_type: str, prompt: str, cwd: Optional[str] = None) -> dict:
     """Dispatch a task to a local agent on a paired device."""
+    logger.info(f"[DISPATCH] dispatch_task called - cwd={cwd}")
     return await _dispatch_task(device_id, agent_type, prompt, cwd, user_id=_get_user_id())
 
 
@@ -137,6 +140,24 @@ async def get_device_status(device_id: str) -> dict:
 async def get_task_status(task_id: str) -> dict:
     """Get status of a dispatched task."""
     return await _get_task_status(task_id, user_id=_get_user_id())
+
+
+@mcp.tool()
+async def list_directory(path: str = "~") -> list[dict]:
+    """List contents of a directory. Returns list of {name, isDirectory, size}."""
+    import os
+    import stat
+
+    expanded = os.path.expanduser(path)
+    return [
+        {
+            "name": entry.name,
+            "isDirectory": entry.is_dir(),
+            "size": entry.stat().st_size if entry.is_file() else 0,
+        }
+        for entry in os.scandir(expanded)
+        if entry.name not in (".", "..")
+    ]
 
 
 def main() -> None:

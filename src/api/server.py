@@ -233,6 +233,14 @@ combined_app.add_middleware(
     expose_headers=["Mcp-Session-Id"],  # Required for Streamable HTTP
 )
 
+# Debug middleware to log MCP requests
+@combined_app.middleware("http")
+async def log_mcp_requests(request: Request, call_next):
+    if request.url.path.startswith("/mcp"):
+        auth_header = request.headers.get("Authorization", "NONE")
+        logger.info(f"[MCP DEBUG] {request.method} {request.url.path} Auth: {auth_header[:50] if auth_header != 'NONE' else 'NONE'}...")
+    return await call_next(request)
+
 # Mount MCP server at /mcp
 combined_app.mount("/mcp", mcp_app)
 

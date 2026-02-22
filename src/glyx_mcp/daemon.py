@@ -379,8 +379,10 @@ class TaskExecutor:
 
         logger.info(f"[{task_id}] ▶ EXECUTING (async): agent={agent_type}, type={task_type}")
         logger.info(f"[{task_id}] user_id={user_id}, device_name={device_name}")
+        logger.info(f"[{task_id}] payload={payload}")
 
         cwd = payload.get("cwd") or payload.get("working_dir")
+        logger.info(f"[{task_id}] cwd from payload={cwd}")
 
         # Check if this is an AI agent type
         agent_key = AGENT_KEY_MAP.get(agent_type)

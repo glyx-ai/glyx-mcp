@@ -420,7 +420,11 @@ class ComposableAgent:
         device_name = task_config.get("device_name")
         task_summary = task_config.get("prompt", "")[:100] or "Agent task"
 
-        logger.info(f"[AGENT STREAM] Starting streaming execution for {self.config.agent_key} (model={model})")
+        working_dir = task_config.get("working_dir")
+        # Expand ~ to full home path (subprocess doesn't do shell expansion)
+        if working_dir:
+            working_dir = os.path.expanduser(working_dir)
+        logger.info(f"[AGENT STREAM] Starting streaming execution for {self.config.agent_key} (model={model}, cwd={working_dir})")
         # Note: Notifications are sent by the backend API when daemon calls update_task_status
 
         cmd = [self.config.command] + self._build_cli_args(task_config)
@@ -444,13 +448,14 @@ class ComposableAgent:
             subprocess_env = {**os.environ, "GITHUB_TOKEN": github_token, "GH_TOKEN": github_token}
             logger.info("[AGENT STREAM] GitHub token injected for PR creation")
 
-        logger.info(f"[AGENT STREAM] Spawning subprocess: {self.config.command}")
+        logger.info(f"[AGENT STREAM] Spawning subprocess: {self.config.command} (cwd={working_dir})")
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=subprocess_env,
+            cwd=working_dir,
         )
         logger.info(f"[AGENT STREAM] Process started (pid={process.pid})")
 
