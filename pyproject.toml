@@ -39,7 +39,7 @@ dev = [
 [project.scripts]
 glyx-mcp = "glyx_mcp.server:main"
 glyx-mcp-http = "api.server:run_http"
-glyx-daemon = "glyx_mcp.daemon:main"
+glyx-dev = "api.server:run_dev"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]
@@ -54,10 +54,10 @@ dev = [
 
 [tool.taskipy.tasks]
 # Development
-dev = "docker compose up"
-dev-build = "docker compose up --build"
-server = "uv run uvicorn api.server:combined_app --host 0.0.0.0 --port 8080 --reload"
-daemon = "uv run glyx-daemon"
+dev = "uvicorn api.server:combined_app --host 0.0.0.0 --port 8000 --reload"
+serve = "glyx-mcp-http --host 0.0.0.0"
+dev-docker = "docker compose up"
+dev-docker-build = "docker compose up --build"
 
 # Testing
 test = "pytest tests/ -v"

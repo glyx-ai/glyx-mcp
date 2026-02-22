@@ -84,12 +84,15 @@ async def dispatch_task(
     if not user_id:
         return {"error": "User authentication required"}
 
+    logger.info(f"[DISPATCH] dispatch_task (internal) - cwd={cwd}")
+
     supabase = _get_supabase()
 
     # Create task payload
     payload = {"prompt": prompt}
     if cwd:
         payload["cwd"] = cwd
+        logger.info(f"[DISPATCH] Added cwd to payload: {cwd}")
 
     task_data = {
         "id": str(uuid.uuid4()),
@@ -380,3 +383,5 @@ async def get_task_status(task_id: str, user_id: Optional[str] = None) -> dict:
         return {"task": result.data}
     else:
         return {"error": "Task not found"}
+
+

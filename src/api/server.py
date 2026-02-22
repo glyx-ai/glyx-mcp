@@ -9,6 +9,13 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+# Configure logging early so all modules get proper handlers
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
 import glyx_python_sdk
 import logfire
 import uvicorn
@@ -20,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from glyx_python_sdk.settings import settings
 
 from api.webhooks import create_github_webhook_router, create_linear_webhook_router
+from api.local_executor import start_local_executor, stop_local_executor
 from supabase import create_client
 
 # Configure Logfire early, before any instrumentation
@@ -186,9 +194,14 @@ mcp_app = mcp.http_app(path="/")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Custom lifespan that wraps MCP lifespan."""
+    """Custom lifespan that wraps MCP lifespan and starts local executor."""
     async with mcp_app.lifespan(app):
-        yield
+        # Start local agent executor (if device_id is configured)
+        await start_local_executor()
+        try:
+            yield
+        finally:
+            await stop_local_executor()
 
 
 # Create combined FastAPI app with custom lifespan
@@ -219,6 +232,14 @@ combined_app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Mcp-Session-Id"],  # Required for Streamable HTTP
 )
+
+# Debug middleware to log MCP requests
+@combined_app.middleware("http")
+async def log_mcp_requests(request: Request, call_next):
+    if request.url.path.startswith("/mcp"):
+        auth_header = request.headers.get("Authorization", "NONE")
+        logger.info(f"[MCP DEBUG] {request.method} {request.url.path} Auth: {auth_header[:50] if auth_header != 'NONE' else 'NONE'}...")
+    return await call_next(request)
 
 # Mount MCP server at /mcp
 combined_app.mount("/mcp", mcp_app)
@@ -280,6 +301,19 @@ async def main_http() -> None:
 def run_http() -> None:
     """Entry point for HTTP server command."""
     asyncio.run(main_http())
+
+
+def run_dev() -> None:
+    """Entry point for local development with hot reload."""
+    port = int(os.environ.get("PORT", 8000))
+    logger.info(f"Starting dev server on http://0.0.0.0:{port} (reload enabled)")
+    uvicorn.run(
+        "api.server:combined_app",
+        host="0.0.0.0",
+        port=port,
+        reload=True,
+        log_level="info",
+    )
 
 
 if __name__ == "__main__":
