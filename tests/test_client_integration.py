@@ -71,27 +71,6 @@ class TestFastMCPClient:
             assert "files" in properties
             assert "model" in properties
 
-    @pytest.mark.asyncio
-    async def test_call_tool_invocation(self) -> None:
-        """Test calling a tool through the client."""
-        client = Client(mcp)
-
-        async with client:
-            # Call the tool - it will execute the subprocess
-            # We expect it to return a result (success or failure)
-            result = await client.call_tool(
-                "use_grok",
-                {"prompt": "What is 2+2?", "model": "openrouter/x-ai/grok-4-fast"},
-            )
-
-            # Verify we got a result back
-            assert result is not None
-            assert hasattr(result, "content")
-
-            # The result should have content (even if it's an error message)
-            assert len(result.content) > 0
-
-
 @pytest.mark.integration
 class TestToolInvocationWithMock:
     """Test tool invocation patterns with mocked subprocess."""
@@ -119,3 +98,31 @@ class TestToolInvocationWithMock:
                 # Verify required fields
                 required = schema.get("required", [])
                 assert "prompt" in required
+
+
+@pytest.mark.e2e  # Requires actual agent CLIs to be installed
+class TestToolInvocationE2E:
+    """End-to-end tests that require real agent CLIs installed."""
+
+    @pytest.mark.asyncio
+    async def test_call_tool_invocation(self) -> None:
+        """Test calling a tool through the client.
+
+        This test requires the 'opencode' binary to be installed.
+        """
+        client = Client(mcp)
+
+        async with client:
+            # Call the tool - it will execute the subprocess
+            # We expect it to return a result (success or failure)
+            result = await client.call_tool(
+                "use_grok",
+                {"prompt": "What is 2+2?", "model": "openrouter/x-ai/grok-4-fast"},
+            )
+
+            # Verify we got a result back
+            assert result is not None
+            assert hasattr(result, "content")
+
+            # The result should have content (even if it's an error message)
+            assert len(result.content) > 0

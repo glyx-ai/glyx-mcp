@@ -86,4 +86,4 @@ jobs:
         run: uv pip install -e ".[dev]" --system
 
       - name: Run integration tests
-        run: uv run pytest -m "integration" --cov=glyx --cov-report=term-missing
+        run: uv run pytest -m "integration" --no-cov  # Skip coverage for integration tests
