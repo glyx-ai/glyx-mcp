@@ -9,12 +9,10 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-# Configure logging early so all modules get proper handlers
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+# Configure Rich logging early so all modules get proper handlers
+from glyx_mcp.logging import configure_logging, get_logger
+
+configure_logging()
 
 import glyx_python_sdk
 import logfire
@@ -73,7 +71,7 @@ _sdk_path = Path(glyx_python_sdk.__file__).parent.parent
 agents_dir = _sdk_path / "agents"
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Create FastAPI app for REST API
 api_app = FastAPI(

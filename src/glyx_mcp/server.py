@@ -8,9 +8,10 @@ from typing import Optional
 
 from fastmcp import FastMCP
 from fastmcp.server.auth import TokenVerifier, AccessToken
-from fastmcp.utilities.logging import get_logger
+from fastmcp.utilities.logging import get_logger as get_fastmcp_logger
 from supabase import create_client
 
+from glyx_mcp.logging import get_logger
 from glyx_python_sdk import discover_and_register_agents, search_memory, save_memory
 from glyx_python_sdk.tools.interact_with_user import ask_user
 from glyx_python_sdk.tools.session_tools import get_session_messages, list_sessions
@@ -26,7 +27,7 @@ from glyx_python_sdk.tools.device_dispatch import (
 )
 from fastmcp.server.dependencies import get_access_token
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://vpopliwokdmpxhmippwc.supabase.co")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
@@ -74,7 +75,7 @@ auth = SupabaseTokenVerifier()
 mcp = FastMCP("glyx-ai", auth=auth)
 
 # Configure FastMCP client logging
-to_client_logger = get_logger(name="fastmcp.server.context.to_client")
+to_client_logger = get_fastmcp_logger(name="fastmcp.server.context.to_client")
 to_client_logger.setLevel(level=logging.INFO)
 
 # Register tools with MCP server
