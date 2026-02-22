@@ -6,10 +6,8 @@ mock_linear_module = MagicMock()
 mock_linear_module.LinearTools = MagicMock()
 sys.modules["integration_agents.linear_agent"] = mock_linear_module
 
-mock_notify_module = MagicMock()
-mock_service = MagicMock()
-mock_notify_module.notification_service = mock_service
-sys.modules["api.notifications"] = mock_notify_module
+mock_knock = MagicMock()
+sys.modules["knockapi"] = MagicMock()
 
 # Now import the module under test
 from framework.lifecycle import FeatureLifecycle  # noqa: E402
@@ -19,19 +17,17 @@ import pytest  # noqa: E402
 
 @pytest.fixture
 def lifecycle():
-    # Since we mocked the module, we don't need patch anymore for the service
-    # We just configure the mock we injected
     lc = FeatureLifecycle()
 
     # Configure Linear Mock
     lc.linear = mock_linear_module.LinearTools.return_value
-    lc.linear.list_teams = AsyncMock(return_value="Team Alpha (KEY) [ID: team-123]")
+    lc.linear.list_teams = AsyncMock(return_value=[{"id": "team-123", "name": "Team Alpha"}])
     lc.linear.create_issue = AsyncMock(return_value="Created issue PROJ-123 (http://url)")
 
-    # Configure Notification Mock
-    # Note: FeatureLifecycle.__init__ assigns self.notification_service = notification_service
-    # which is our mock_service object
-    lc.notification_service.send_feature_notification = AsyncMock()
+    # Configure Knock Mock (lazy-init property, mock the underlying client)
+    mock_knock_client = MagicMock()
+    mock_knock_client.workflows.trigger = MagicMock()
+    lc._knock_client = mock_knock_client
 
     yield lc
 
@@ -50,10 +46,12 @@ async def test_start_feature_auto_team(lifecycle):
         priority=0,
     )
 
-    # Verify Notification
-    lifecycle.notification_service.send_feature_notification.assert_called_once_with(
-        event="started", feature_name="Test Feature", linear_info="Created issue PROJ-123 (http://url)"
-    )
+    # Verify Knock notification trigger
+    lifecycle.knock_client.workflows.trigger.assert_called_once()
+    call_kwargs = lifecycle.knock_client.workflows.trigger.call_args.kwargs
+    assert call_kwargs["key"] == "feature-lifecycle"
+    assert call_kwargs["data"]["event"] == "started"
+    assert call_kwargs["data"]["feature_name"] == "Test Feature"
 
     assert "started" in result
 
