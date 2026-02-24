@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List users from Supabase auth to find user IDs for daemon registration."""
+"""List users from Supabase auth to find user IDs for executor registration."""
 
 from __future__ import annotations
 

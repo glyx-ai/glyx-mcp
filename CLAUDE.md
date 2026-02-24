@@ -4,14 +4,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-glyx-mcp is a FastMCP server built on **glyx-python-sdk** that provides composable AI agent wrappers, REST APIs, webhooks, and real-time communication for the Glyx ecosystem.
+glyx-mcp is a unified FastAPI application that serves **two deployment modes** via FastAPI mount:
+
+### 1. Deployed Backend (Cloud Run)
+**URL:** `https://glyx-mcp-996426597393.us-central1.run.app`
+
+Handles iOS/web client requests:
+- REST API for task dispatch, HITL, device management
+- Push notifications via Knock
+- Webhook handlers (GitHub, Linear)
+- MCP protocol endpoint at `/mcp`
+
+### 2. Local MCP Executor (User's Mac)
+**Command:** `glyx-executor` or `uv run task dev`
+
+Same FastAPI app, but with LocalExecutor enabled:
+- Subscribes to Supabase Realtime for tasks assigned to this device
+- Executes tasks using local AI agents (Claude Code, Cursor, Aider, etc.)
+- Streams output back to Supabase for iOS to display
+- Sends heartbeats to indicate online status
+
+The local executor is enabled when `GLYX_DEVICE_ID` is set (either via env var or `~/.glyx/device_id` file).
 
 **Key Components:**
-- **FastMCP Server**: MCP protocol for Claude Code integration (stdio transport)
-- **FastAPI REST API**: HTTP endpoints for web/mobile clients
-- **WebSocket**: Real-time event broadcasting
+- **FastAPI + FastMCP Mount**: Unified app serving REST API and MCP protocol
+- **LocalExecutor**: Task execution on paired devices (enabled by device_id)
+- **Supabase Realtime**: Task dispatch and real-time updates
 - **Knock Integration**: Push notifications to iOS app
-- **Device Dispatch**: iOS app → Mac daemon task execution
+- **WebSocket**: Real-time event broadcasting
 
 ## Project Structure
 
@@ -176,7 +196,7 @@ ruff check src/
 ## Database Schema (Supabase)
 
 ### agent_tasks
-Task dispatch to paired devices (iOS → Mac daemon)
+Task dispatch to paired devices (iOS → Mac MCP executor)
 - `id` (UUID), `user_id`, `device_id`, `agent_type`, `task_type`
 - `payload` (JSONB), `status` (pending/running/completed/failed/needs_input/cancelled/timeout)
 - `output` (TEXT) - Streaming output from agent, appended during execution
@@ -280,8 +300,8 @@ ctx.info()           # FastMCP → Claude Code
 ```python
 dispatch_task(device_id, agent_type, prompt, cwd, user_id)  # Run agent task
 run_on_device(device_id, command, cwd, user_id)            # Shell command
-start_agent(device_id, agent_type, cwd, user_id)           # Start daemon
-stop_agent(device_id, agent_type, user_id)                 # Stop daemon
+start_agent(device_id, agent_type, cwd, user_id)           # Start executor
+stop_agent(device_id, agent_type, user_id)                 # Stop executor
 list_devices(user_id)                                       # List paired devices
 get_device_status(device_id, user_id)                      # Device status
 get_task_status(task_id, user_id)                          # Poll task result
@@ -290,8 +310,8 @@ get_task_status(task_id, user_id)                          # Poll task result
 ### Flow
 1. iOS app calls MCP tool with device_id
 2. Tool inserts into `agent_tasks` table
-3. Supabase Realtime notifies daemon on Mac
-4. Daemon executes task
+3. Supabase Realtime notifies MCP executor on Mac
+4. MCP executor executes task
 5. Results stored in `agent_tasks.result`
 6. iOS polls `get_task_status()` for result
 

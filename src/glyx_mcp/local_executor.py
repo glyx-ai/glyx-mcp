@@ -1,13 +1,13 @@
 """
-Local daemon that executes tasks dispatched from the iOS app.
+MCP Local Executor - executes tasks dispatched from the iOS app.
 
 Subscribes to Supabase Realtime for agent_tasks where device_id matches
 this machine, executes tasks using local agents (Claude Code, shell, etc.),
 and streams output back to the database.
 
 Usage:
-    glyx-daemon --device-id <uuid>
-    glyx-daemon  # Uses GLYX_DEVICE_ID from environment
+    glyx-executor --device-id <uuid>
+    glyx-executor  # Uses GLYX_DEVICE_ID from environment
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ AGENT_KEY_MAP: dict[str, AgentKey] = {
     "grok": AgentKey.GROK,
 }
 
-logger = get_logger("glyx-daemon")
+logger = get_logger("glyx-executor")
 
 
 class TaskExecutor:
@@ -457,9 +457,9 @@ class TaskExecutor:
                 )
 
 
-class GlyxDaemon:
+class LocalExecutor:
     """
-    Daemon that listens for tasks and executes them locally.
+    MCP Local Executor that listens for tasks and executes them locally.
 
     Subscribes to Supabase Realtime for agent_tasks where device_id matches,
     then executes tasks as they arrive.
@@ -567,7 +567,7 @@ class GlyxDaemon:
                 logger.error(f"Error processing task: {e}")
 
     async def _send_heartbeat(self) -> bool:
-        """Send a heartbeat to the server to indicate daemon is alive."""
+        """Send a heartbeat to the server to indicate executor is alive."""
         url = f"{self.api_base_url}/api/devices/{self.device_id}/heartbeat"
         uptime = time.time() - self.start_time
 
@@ -623,7 +623,7 @@ class GlyxDaemon:
 
     async def subscribe_to_tasks(self) -> Any:
         """Subscribe to Realtime for task insertions."""
-        channel_name = f"daemon-{self.device_id}"
+        channel_name = f"executor-{self.device_id}"
         channel = self.supabase.channel(channel_name)
 
         # Subscribe to INSERT events on agent_tasks
@@ -647,8 +647,8 @@ class GlyxDaemon:
             self._poll_pending_tasks()
 
     async def run(self) -> None:
-        """Run the daemon."""
-        logger.info(f"Starting Glyx Daemon for device: {self.device_id}")
+        """Run the executor."""
+        logger.info(f"Starting Glyx Local Executor for device: {self.device_id}")
         logger.info(f"API base URL: {self.api_base_url}")
         logger.info(f"Knock API key configured: {bool(settings.knock_api_key)}")
         logger.info(f"Supabase URL: {settings.supabase_url[:50] if settings.supabase_url else 'NOT SET'}...")
@@ -674,7 +674,7 @@ class GlyxDaemon:
         heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         polling_task = asyncio.create_task(self._polling_loop())
 
-        logger.info("Daemon is running. Press Ctrl+C to stop.")
+        logger.info("Executor is running. Press Ctrl+C to stop.")
 
         try:
             # Keep running until interrupted
@@ -691,10 +691,10 @@ class GlyxDaemon:
                 await processor_task
                 await heartbeat_task
                 await polling_task
-            logger.info("Daemon stopped.")
+            logger.info("Executor stopped.")
 
     def stop(self) -> None:
-        """Stop the daemon."""
+        """Stop the executor."""
         self.running = False
 
 
@@ -743,10 +743,10 @@ def _register_device(user_id: str) -> str | None:
     device_data = {
         "id": device_id,
         "user_id": user_id,
-        "name": f"Daemon on {hostname}",
+        "name": f"Executor on {hostname}",
         "hostname": hostname,
         "status": "active",
-        "relay_url": "local://daemon",  # Daemon doesn't use relay, executes locally
+        "relay_url": "local://mcp-executor",  # MCP executor executes locally
     }
 
     result = supabase.table("paired_devices").insert(device_data).execute()
@@ -774,9 +774,9 @@ def _load_device_id_from_file() -> str | None:
 
 
 def main() -> int:
-    """Entry point for glyx-daemon CLI."""
+    """Entry point for glyx-executor CLI."""
     parser = argparse.ArgumentParser(
-        description="Glyx Daemon - Local task executor for iOS orchestration",
+        description="Glyx Local Executor - Task executor for iOS orchestration via MCP",
     )
     parser.add_argument(
         "--device-id",
@@ -839,7 +839,7 @@ def main() -> int:
             file=sys.stderr,
         )
         print(
-            "  3. Run 'glyx-daemon' again",
+            "  3. Run 'glyx-executor' again",
             file=sys.stderr,
         )
         print(
@@ -848,16 +848,16 @@ def main() -> int:
         )
         return 1
 
-    daemon = GlyxDaemon(
+    executor = LocalExecutor(
         device_id=device_id,
         api_base_url=args.api_url,
     )
 
     try:
-        asyncio.run(daemon.run())
+        asyncio.run(executor.run())
     except KeyboardInterrupt:
-        daemon.stop()
-        print("\nDaemon stopped by user.")
+        executor.stop()
+        print("\nExecutor stopped by user.")
 
     return 0
 

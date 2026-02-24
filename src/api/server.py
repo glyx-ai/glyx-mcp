@@ -236,8 +236,16 @@ combined_app.add_middleware(
 async def log_mcp_requests(request: Request, call_next):
     if request.url.path.startswith("/mcp"):
         auth_header = request.headers.get("Authorization", "NONE")
-        logger.info(f"[MCP DEBUG] {request.method} {request.url.path} Auth: {auth_header[:50] if auth_header != 'NONE' else 'NONE'}...")
-    return await call_next(request)
+        accept_header = request.headers.get("Accept", "NONE")
+        session_id = request.headers.get("Mcp-Session-Id", "NONE")
+        logger.info(f"[MCP DEBUG] {request.method} {request.url.path}")
+        logger.info(f"[MCP DEBUG]   Auth: {auth_header[:50] if auth_header != 'NONE' else 'NONE'}...")
+        logger.info(f"[MCP DEBUG]   Accept: {accept_header}")
+        logger.info(f"[MCP DEBUG]   Session-Id: {session_id}")
+    response = await call_next(request)
+    if request.url.path.startswith("/mcp"):
+        logger.info(f"[MCP DEBUG]   Response: {response.status_code}")
+    return response
 
 # Mount MCP server at /mcp
 combined_app.mount("/mcp", mcp_app)

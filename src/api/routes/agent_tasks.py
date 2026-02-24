@@ -1,7 +1,7 @@
 """Agent task management API routes.
 
 These endpoints handle the agent_tasks table used for iOS orchestration.
-The daemon on user devices calls these to update task status and stream output.
+The MCP executor on user devices calls these to update task status and stream output.
 """
 
 from __future__ import annotations
@@ -140,7 +140,7 @@ def _get_supabase():
     description="""
 Update the status and/or output of an agent task.
 
-This endpoint is called by the daemon running on user devices to:
+This endpoint is called by the MCP executor running on user devices to:
 - Update task status (pending → running → completed/failed)
 - Append output chunks as the agent produces output
 - Report errors and exit codes

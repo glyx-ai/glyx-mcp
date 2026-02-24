@@ -131,7 +131,7 @@ resource "google_secret_manager_secret_version" "supabase_secret_key" {
   secret_data = var.supabase_secret_key
 }
 
-# DEPRECATED: daemon user secrets - no longer used, kept for state compatibility
+# DEPRECATED: legacy service user secrets - no longer used, kept for state compatibility
 resource "google_secret_manager_secret" "daemon_user_email" {
   secret_id = "daemon-user-email"
 

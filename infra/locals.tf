@@ -36,6 +36,6 @@ locals {
     KNOCK_API_KEY             = google_secret_manager_secret.knock_api_key.secret_id
     LANGFUSE_SECRET_KEY       = google_secret_manager_secret.langfuse_secret_key.secret_id
     LANGFUSE_PUBLIC_KEY       = google_secret_manager_secret.langfuse_public_key.secret_id
-    # DEPRECATED: daemon user secrets removed - using supabase_secret_key instead
+    # DEPRECATED: legacy service user secrets removed - using supabase_secret_key instead
   }
 }

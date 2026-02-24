@@ -41,17 +41,17 @@ class HeartbeatResponse(BaseModel):
 )
 async def heartbeat(device_id: str, body: HeartbeatRequest | None = None) -> HeartbeatResponse:
     """
-    Report that a device daemon is alive and running.
+    Report that a device MCP executor is alive and running.
 
-    Called periodically by the daemon to indicate it's online and ready
+    Called periodically by the executor to indicate it's online and ready
     to accept tasks. Updates the `last_seen` timestamp in the database.
 
     **Path Parameters:**
     - `device_id`: UUID of the paired device
 
     **Request Body (optional):**
-    - `uptime_seconds`: How long the daemon has been running
-    - `version`: Daemon version string
+    - `uptime_seconds`: How long the executor has been running
+    - `version`: Executor version string
     - `hostname`: Machine hostname (for verification)
 
     **Returns:**
@@ -63,7 +63,7 @@ async def heartbeat(device_id: str, body: HeartbeatRequest | None = None) -> Hea
     - 404: Device not found
     - 500: Database error
     """
-    # Use service role key to bypass RLS - daemon heartbeats are unauthenticated
+    # Use service role key to bypass RLS - executor heartbeats are unauthenticated
     supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
     now = datetime.now(UTC).isoformat()
 

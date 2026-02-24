@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List paired devices from Supabase to help find device IDs for the daemon."""
+"""List paired devices from Supabase to help find device IDs for the MCP executor."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def main() -> int:
         print(f"  Paired:   {device.get('paired_at', 'N/A')}")
         print("-" * 80)
 
-    print(f"\nTo run daemon: GLYX_DEVICE_ID=<id> uv run glyx-daemon")
+    print(f"\nTo run executor: GLYX_DEVICE_ID=<id> uv run glyx-executor")
     return 0
 
 
