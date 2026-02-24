@@ -425,7 +425,7 @@ class ComposableAgent:
         if working_dir:
             working_dir = os.path.expanduser(working_dir)
         logger.info(f"[AGENT STREAM] Starting streaming execution for {self.config.agent_key} (model={model}, cwd={working_dir})")
-        # Note: Notifications are sent by the backend API when daemon calls update_task_status
+        # Note: Notifications are sent by the backend API when executor calls update_task_status
 
         cmd = [self.config.command] + self._build_cli_args(task_config)
 
@@ -559,7 +559,7 @@ class ComposableAgent:
 
         execution_time = time() - start_time
         exit_code = process.returncode if process.returncode is not None else -1
-        # Note: Notifications are sent by the backend API when daemon calls update_task_status
+        # Note: Notifications are sent by the backend API when executor calls update_task_status
 
         yield {
             "type": "agent_complete",

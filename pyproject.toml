@@ -42,6 +42,7 @@ dev = [
 glyx-mcp = "glyx_mcp.server:main"
 glyx-mcp-http = "api.server:run_http"
 glyx-dev = "api.server:run_dev"
+glyx-executor = "glyx_mcp.local_executor:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]

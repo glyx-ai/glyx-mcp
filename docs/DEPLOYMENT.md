@@ -73,10 +73,11 @@ LANGFUSE_HOST=https://cloud.langfuse.com
 ```bash
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SECRET_KEY=sb_secret_...  # Backend operations key, bypasses RLS
 
-# Daemon Service User (for backend operations - see Daemon Authentication below)
-DAEMON_USER_EMAIL=daemon@glyx.ai
-DAEMON_USER_PASSWORD=your-secure-password
+# DEPRECATED: Legacy service user (no longer used)
+# DAEMON_USER_EMAIL=daemon@glyx.ai
+# DAEMON_USER_PASSWORD=your-secure-password
 ```
 
 **GitHub App (Webhooks):**
@@ -307,8 +308,9 @@ Set these in GitHub repo settings → Secrets:
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Supabase anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | (Deprecated) Supabase service role key |
-| `DAEMON_USER_EMAIL` | Daemon service user email (see below) |
-| `DAEMON_USER_PASSWORD` | Daemon service user password |
+| `SUPABASE_SECRET_KEY` | Supabase secret key for backend operations |
+| `DAEMON_USER_EMAIL` | (Deprecated) Legacy service user email |
+| `DAEMON_USER_PASSWORD` | (Deprecated) Legacy service user password |
 | `MEM0_API_KEY` | Mem0 API key |
 | `LOGFIRE_TOKEN` | Logfire observability token |
 | `KNOCK_API_KEY` | Knock notifications API key |
@@ -510,70 +512,29 @@ Always use HTTPS in production:
 - Cloud Run: Automatic HTTPS
 - Self-hosted: Use reverse proxy (nginx, Caddy) with SSL
 
-### 6. Daemon Authentication
+### 6. Backend Authentication (DEPRECATED)
 
-The backend API uses a **dedicated service user** for database operations rather than a service role key that bypasses RLS. This ensures proper Row Level Security enforcement.
+> **Note:** The legacy "daemon user" authentication pattern is deprecated. The backend now uses `SUPABASE_SECRET_KEY` (sb_secret_...) for backend operations that bypass RLS when needed.
 
-#### Why Not Service Role Keys?
+#### Current Approach
 
-Supabase offers service role keys (`eyJ...` JWT format) that bypass all RLS policies. While convenient, this is an anti-pattern:
-
-- **Security risk**: Any code with the key can access/modify all data
-- **No audit trail**: RLS policies provide clear access rules
-- **Deprecated pattern**: Supabase is moving toward explicit authentication
-
-#### Setup
-
-1. **Create the daemon user in Supabase:**
-
-   Go to Supabase Dashboard → Authentication → Users → Add User:
-   - Email: `daemon@glyx.ai`
-   - Password: Generate a strong password (32+ chars)
-   - Check "Auto Confirm User"
-
-2. **Apply RLS migration:**
-
-   ```bash
-   supabase db push
-   # Or run supabase/migrations/20260215_daemon_user_rls.sql via SQL Editor
-   ```
-
-3. **Set environment variables:**
-
-   ```bash
-   DAEMON_USER_EMAIL=daemon@glyx.ai
-   DAEMON_USER_PASSWORD=your-secure-password
-   ```
-
-4. **Add GitHub secrets** (for CI/CD):
-   - `DAEMON_USER_EMAIL`
-   - `DAEMON_USER_PASSWORD`
-
-#### How It Works
-
-The backend authenticates as the daemon user via Supabase Auth:
+Backend operations use the Supabase secret key directly:
 
 ```python
-client = create_client(url, anon_key)
-client.auth.sign_in_with_password({
-    "email": settings.daemon_user_email,
-    "password": settings.daemon_user_password,
-})
+from supabase import create_client
+
+client = create_client(settings.supabase_url, settings.supabase_secret_key)
+# Direct table access, bypasses RLS
 ```
 
-RLS policies grant the daemon user access to all agent tasks:
-
-```sql
-CREATE POLICY "Daemon can update all tasks" ON agent_tasks
-FOR UPDATE USING (
-    auth.jwt() ->> 'email' = 'daemon@glyx.ai'
-);
+Set the secret key in your environment:
+```bash
+SUPABASE_SECRET_KEY=sb_secret_...  # From Supabase dashboard → Settings → API
 ```
 
-This provides:
-- **Proper RLS enforcement** for all other users
-- **Explicit, auditable access** for backend operations
-- **Standard Supabase auth flow** (no special key types)
+#### Legacy Service User (DEPRECATED)
+
+The previous approach used a dedicated Supabase user (`daemon@glyx.ai`) with RLS policies. This pattern is no longer used. The related environment variables (`DAEMON_USER_EMAIL`, `DAEMON_USER_PASSWORD`) and Terraform resources are kept for backwards compatibility but are not actively used
 
 ---
 

@@ -1,7 +1,7 @@
 """HITL (Human-in-the-Loop) request management API routes.
 
 These endpoints handle the hitl_requests table for iOS orchestration.
-Daemons create HITL requests when agents need human input.
+MCP executors create HITL requests when agents need human input.
 Users respond via the iOS app.
 """
 
@@ -130,7 +130,7 @@ def _get_supabase():
     description="""
 Create a new HITL (Human-in-the-Loop) request.
 
-This endpoint is called by the daemon when an agent needs human input to proceed.
+This endpoint is called by the MCP executor when an agent needs human input to proceed.
 The request is stored in the database and the user is notified via push notification.
 
 **Task Status Update**: The associated agent_task status is automatically set to 'needs_input'.

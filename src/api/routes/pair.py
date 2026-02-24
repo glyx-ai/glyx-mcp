@@ -39,7 +39,7 @@ async def get_pair_script() -> str:
 
     The script will:
     1. Generate a unique pairing code
-    2. Start the glyx daemon (relay server)
+    2. Start the glyx MCP executor
     3. Display a QR code for the iOS app to scan
     """
     return PAIR_SCRIPT

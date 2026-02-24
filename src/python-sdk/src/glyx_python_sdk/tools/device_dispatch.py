@@ -2,7 +2,7 @@
 Tools for dispatching tasks to paired devices via Supabase Realtime.
 
 The iOS app calls these MCP tools, which insert into agent_tasks table.
-The daemon on the user's Mac subscribes to Supabase Realtime and executes tasks.
+The MCP executor on the user's Mac subscribes to Supabase Realtime and executes tasks.
 """
 
 import logging
@@ -69,7 +69,7 @@ async def dispatch_task(
     Dispatch a task to a local agent on a paired device.
 
     The task is inserted into the agent_tasks table, which triggers
-    a Supabase Realtime notification to the daemon running on the device.
+    a Supabase Realtime notification to the MCP executor running on the device.
 
     Args:
         device_id: The target device ID (from paired_devices table)

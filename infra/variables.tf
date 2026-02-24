@@ -79,14 +79,14 @@ variable "supabase_secret_key" {
 }
 
 variable "daemon_user_email" {
-  description = "DEPRECATED: Daemon service user email (no longer used)"
+  description = "DEPRECATED: Legacy service user email (no longer used, kept for state compatibility)"
   type        = string
   sensitive   = true
   default     = ""
 }
 
 variable "daemon_user_password" {
-  description = "DEPRECATED: Daemon service user password (no longer used)"
+  description = "DEPRECATED: Legacy service user password (no longer used, kept for state compatibility)"
   type        = string
   sensitive   = true
   default     = ""

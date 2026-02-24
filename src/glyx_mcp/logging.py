@@ -29,7 +29,7 @@ GLYX_THEME = Theme({
     "logging.level.error": "red bold",
     "logging.level.critical": "red bold reverse",
     "mcp": "cyan bold",
-    "daemon": "magenta bold",
+    "executor": "magenta bold",
     "agent": "yellow bold",
     "api": "blue bold",
     "auth": "green bold",
@@ -41,7 +41,7 @@ GLYX_THEME = Theme({
 # Component color mapping for log prefixes
 COMPONENT_STYLES = {
     "MCP": "cyan bold",
-    "DAEMON": "magenta bold",
+    "EXECUTOR": "magenta bold",
     "AGENT": "yellow bold",
     "API": "blue bold",
     "AUTH": "green bold",
@@ -144,7 +144,7 @@ def format_component(component: str) -> str:
         logger.info(f"{format_component('MCP')} Connected to server")
 
     Args:
-        component: Component name (MCP, DAEMON, AGENT, etc.)
+        component: Component name (MCP, EXECUTOR, AGENT, etc.)
 
     Returns:
         Rich-formatted component string

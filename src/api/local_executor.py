@@ -4,7 +4,7 @@ Local agent executor - runs tasks on the local machine.
 Subscribes to Supabase Realtime for agent_tasks where device_id matches
 this machine, executes tasks using ComposableAgent, and sends notifications.
 
-This runs as part of the FastAPI server lifespan, not as a separate daemon.
+This runs as part of the FastAPI server lifespan, not as a standalone process.
 """
 
 from __future__ import annotations
