@@ -1,298 +1,218 @@
-# glyx-ai
+<p align="center">
+  <img src="https://img.shields.io/badge/glyx-mcp-7C3AED?style=for-the-badge&logoColor=white" alt="glyx-mcp" />
+</p>
 
-Composable AI agent framework with a FastMCP server, exposing multiple agent tools (Aider, Grok, etc.) through the MCP protocol. Agents are driven by JSON configs and executed as subprocesses for reliability and observability.
+<h1 align="center">glyx-mcp</h1>
 
-## Highlights
+<p align="center">
+  <strong>The backend that powers <a href="https://glyx.ai">Glyx</a> — a mobile DevOps command center for your iPhone.</strong>
+</p>
 
-- **Composable by config**: Add agents via JSON, no code changes
-- **Multiple entrypoints**: `glyx-mcp` (stdio), `glyx-mcp-http` (HTTP + WebSocket)
-- **First-class tools**: Aider for code edits, Grok via OpenRouter, memory/session utilities
-- **Tracing-ready**: Optional Langfuse instrumentation
-- **Typed + tested**: Strict mypy, ruff, pytest
+<p align="center">
+  Control AI coding agents, execute commands, and manage your dev machines from anywhere.
+</p>
+
+<p align="center">
+  <a href="https://github.com/glyx-ai/glyx-mcp/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/glyx-ai/glyx-mcp/ci.yml?branch=main&style=flat-square&label=CI" alt="CI" /></a>
+  <a href="https://github.com/glyx-ai/glyx-mcp/actions/workflows/deploy.yml"><img src="https://img.shields.io/github/actions/workflow/status/glyx-ai/glyx-mcp/deploy.yml?branch=main&style=flat-square&label=Deploy" alt="Deploy" /></a>
+  <img src="https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/iOS-17+-000000?style=flat-square&logo=apple&logoColor=white" alt="iOS" />
+  <a href="https://github.com/glyx-ai/glyx-mcp/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" /></a>
+</p>
 
 ---
 
-## Quickstart
+## What is Glyx?
 
-### Option A — Docker (recommended)
+Glyx lets you run AI coding agents on your dev machine and control them from your phone. Think of it as a remote control for Claude Code, Cursor, Codex, and Aider — with real-time streaming, push notifications, and human-in-the-loop approvals.
+
+**This repo** is the server that makes it all work. It runs on your machine and bridges the Glyx iOS app to your local coding agents.
+
+## How it works
+
+```
+┌──────────────┐       ┌──────────────────┐       ┌──────────────┐
+│              │       │                  │       │              │
+│   Glyx iOS   │◄─────►│    Supabase      │◄─────►│  glyx-mcp    │
+│   (phone)    │       │   (Realtime)     │       │  (your Mac)  │
+│              │       │                  │       │              │
+└──────────────┘       └──────────────────┘       └──────┬───────┘
+                                                         │
+                                                         ▼
+                                                  ┌──────────────┐
+                                                  │ Claude Code  │
+                                                  │ Cursor       │
+                                                  │ Codex        │
+                                                  │ Aider        │
+                                                  └──────────────┘
+```
+
+1. You dispatch a task from the iOS app
+2. The task lands in Supabase
+3. Your local glyx-mcp executor picks it up and runs the agent
+4. Output streams back to your phone in real-time
+5. If the agent needs input, you get a push notification
+
+## Quick start
+
+One command. That's it.
 
 ```bash
-# Build and run
-docker compose build
-# With .env (see .env.example for keys)
-docker compose up
+curl -sL glyx.ai/pair | bash
 ```
 
-This starts the MCP server (`glyx-mcp`) inside a container. The compose file mounts your project directory into `/workspace` so file-editing agents (e.g., Aider) can modify your local files.
+This will:
+- Install [uv](https://github.com/astral-sh/uv) if needed
+- Clone this repo to `~/.glyx/glyx-mcp`
+- Install dependencies
+- Show a QR code — scan it with the Glyx iOS app to pair
 
-MCP client example (Claude Desktop `claude_desktop_config.json`):
+<details>
+<summary>What the pairing screen looks like</summary>
 
-```json
-{
-  "mcpServers": {
-    "glyx-ai": {
-      "command": "docker",
-      "args": ["compose", "run", "--rm", "glyx-mcp"],
-      "env": {
-        "OPENROUTER_API_KEY": "your_key"
-      }
-    }
-  }
-}
+```
+   ██████╗ ██╗  ██╗   ██╗██╗  ██╗
+  ██╔════╝ ██║  ╚██╗ ██╔╝╚██╗██╔╝
+  ██║  ███╗██║   ╚████╔╝  ╚███╔╝
+  ██║   ██║██║    ╚██╔╝   ██╔██╗
+  ╚██████╔╝██████╗ ██║   ██╔╝ ██╗
+   ╚═════╝ ╚═════╝ ╚═╝   ╚═╝  ╚═╝
+
+  ╭──────── Scan with Glyx iOS ────────╮
+  │                                    │
+  │         ████████████████           │
+  │         ██ QR CODE  ██             │
+  │         ████████████████           │
+  │                                    │
+  ╰──── Point your camera at this ─────╯
+
+  Device   MacBook-Pro (you)
+  IP       192.168.1.5:8000
+  Agents   claude  cursor  codex
 ```
 
-### Option B — Native install
+Rendered with [Rich](https://github.com/Textualize/rich) + [segno](https://github.com/heuer/segno) for a polished terminal experience.
+</details>
 
-```bash
-# Install uv (if needed)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+## Features
 
-# Install package + dev deps
-uv pip install -e ".[dev]"
+| Feature | Description |
+|---------|-------------|
+| **Agent dispatch** | Run Claude Code, Cursor, Codex, or Aider from your phone |
+| **Real-time streaming** | See agent output as it happens via Supabase Realtime |
+| **Human-in-the-loop** | Agents can ask you questions — respond inline with a countdown timer |
+| **Push notifications** | Get notified when agents need input or finish (via [Knock](https://knock.app)) |
+| **QR pairing** | One scan to connect your phone to your machine |
+| **Token provisioning** | iOS sends your auth session to the local server — no API keys on disk |
+| **Auto-detection** | Discovers which agents you have installed (claude, cursor, codex, aider) |
 
-# Run MCP server (stdio)
-glyx-mcp
+## Architecture
 
-# Or run HTTP transport (HTTP + WS)
-glyx-mcp-http
+The project has two roles:
+
+### Cloud API (deployed to Google Cloud Run)
+
+REST API that the iOS app talks to. Handles auth, task management, HITL requests, webhooks, and serves the pairing script.
+
+```
+src/api/
+  routes/         # FastAPI endpoints (auth, tasks, HITL, devices, pair, etc.)
+  webhooks/       # GitHub + Linear webhook handlers
+  integrations/   # Claude Code, Linear integrations
+  session.py      # Token provisioning + session management
+  server.py       # Combined FastAPI + FastMCP server
 ```
 
-> Tip: `./install.sh` installs tools like Aider/OpenCode for you if you prefer a one-shot setup.
+### Local executor (runs on your machine)
 
----
+Subscribes to Supabase Realtime, picks up tasks assigned to your device, and executes them using local coding agents.
 
-## Environment
-
-Copy `.env.example` to `.env` and fill as needed. Supported variables (see `src/glyx/mcp/settings.py`):
-
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `OPENROUTER_API_KEY`
-- `CLAUDE_API_KEY`
-- `MEM0_API_KEY`
-- `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` (optional tracing)
-- `DEFAULT_ORCHESTRATOR_MODEL` (default: `gpt-5`)
-- `DEFAULT_AIDER_MODEL` (default: `gpt-5`)
-- `DEFAULT_GROK_MODEL` (default: `openrouter/x-ai/grok-4-fast`)
-
-When running via Docker Compose, `.env` is loaded automatically.
-
----
-
-## Running modes
-
-- **Stdio (default)**: `glyx-mcp` — best for Claude Code / CLI MCP clients
-- **HTTP**: `glyx-mcp-http` — serves MCP over HTTP with realtime WebSocket events
-
-Entrypoints are defined in `pyproject.toml`:
-
-```toml
-[project.scripts]
-glyx-mcp = "glyx.mcp.server:main"
-glyx-mcp-http = "glyx.mcp.server:main_http"
+```
+src/api/local_executor.py    # Realtime subscriber + agent runner
+src/glyx_mcp/logging.py      # Rich-powered terminal logging
+scripts/pair_display.py      # Pairing screen (Rich + segno QR)
 ```
 
----
+### Auth flow
 
-## Tools overview
+The local executor authenticates to Supabase using **your** session tokens (not a service role key). During QR pairing, the iOS app provisions tokens to your local server:
 
-- **Aider** (`use_aider`) — AI code editing across specified files
-- **Grok** (`use_grok`) — general reasoning via OpenRouter/xAI (OpenCode CLI)
-- **Memory** (`save_memory`, `search_memory`) — lightweight vector memory via `mem0`
-- **Sessions** (`list_sessions`, `get_session_messages`) — conversation history helpers
-- **Orchestrate** (`orchestrate`) — coordinates multiple agents for complex tasks
-
-See implementations under `src/glyx/mcp/tools/`.
-
----
-
-## Adding an agent
-
-Agents are defined by JSON configs and auto-registered at startup:
-
-1) Drop a config file into `agents/` (e.g., `grok.json`).
-2) The server discovers configs and registers an MCP tool per agent.
-
-Config → CLI execution is handled by `ComposableAgent` (`src/glyx/mcp/composable_agent.py`): it maps config args to CLI flags, spawns a subprocess, and returns structured output with timing and exit code. Discovery is performed in `src/glyx/core/registry.py` and wired from `src/glyx/mcp/server.py`.
-
-Minimal example config shape:
-
-```json
-{
-  "my_agent": {
-    "command": "cli-tool",
-    "args": {
-      "prompt": { "flag": "--prompt", "type": "string", "required": true },
-      "files":  { "flag": "--files",  "type": "string" },
-      "model":  { "flag": "--model",  "type": "string", "default": "gpt-5" }
-    },
-    "description": "My agent",
-    "capabilities": ["edit", "explain"]
-  }
-}
+```
+iOS scans QR → POST /api/auth/provision → tokens stored in ~/.glyx/session (0600)
 ```
 
----
-
-## Tracing (optional)
-
-If `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` are provided, Langfuse tracing is enabled automatically with request/response metadata and timing. Without keys, tracing is disabled with zero overhead.
-
----
+Tokens auto-refresh every 50 minutes.
 
 ## Development
 
 ```bash
-# Install dev deps
-uv pip install -e ".[dev]"
+# Clone
+git clone https://github.com/glyx-ai/glyx-mcp.git
+cd glyx-mcp
 
-# Type check / lint
-mypy src/glyx/
-ruff check src/glyx/
+# Install
+uv sync --extra dev
 
-# Run tests (unit by default)
-uv run pytest -q
+# Run locally
+uv run task dev
 
-# Integration / E2E markers
-uv run pytest -m integration
-uv run pytest -m e2e
+# Lint + type check
+uv run task lint
 
-# Client integration (useful locally)
-uv run pytest tests/test_client_integration.py -vv -ss
+# Tests
+uv run task test
 ```
 
-- Python ≥ 3.11
-- Strict mypy, ruff line length 120
-- Coverage threshold is 40% (`pytest.ini`)
+### Environment
 
----
+Copy `.env.example` to `.env`. The key variables:
 
-## MCP client configuration examples
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SUPABASE_URL` | Yes | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Yes | Supabase publishable key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Dev only | For local development without iOS pairing |
+| `KNOCK_API_KEY` | Optional | Push notifications via Knock |
+| `LOGFIRE_TOKEN` | Optional | Observability via Logfire |
 
-Native (stdio):
+## Deployment
 
-```json
-{
-  "mcpServers": {
-    "glyx-ai": { "command": "glyx-mcp" }
-  }
-}
-```
-
-HTTP:
-
-```json
-{
-  "mcpServers": {
-    "glyx-ai": {
-      "command": "bash",
-      "args": ["-lc", "glyx-mcp-http"],
-      "transport": {
-        "type": "http",
-        "url": "http://localhost:8000"
-      }
-    }
-  }
-}
-```
-
----
-
-## Production Deployment
-
-The application is **production-ready** with complete deployment automation and monitoring.
-
-### Quick Deploy (3 Steps)
+Pushing to `main` auto-deploys to Google Cloud Run via GitHub Actions + Terraform.
 
 ```bash
-# 1. Configure environment
-cp .env.production .env.production.local
-# Edit and add your API keys
-
-# 2. Validate configuration
-uv run python scripts/validate_deployment.py
-
-# 3. Deploy to Fly.io
-./deploy.sh
+# Manual deploy
+uv run task deploy
 ```
 
-### Deployment Options
+Infrastructure is defined in `infra/` (Terraform).
 
-| Platform | Command | Best For |
-|----------|---------|----------|
-| **Cloud Run** | `git push origin main` | Production (auto-deploy via Terraform) |
-| **Fly.io** | `./deploy.sh` | Alternative production |
-| **Docker Compose** | `docker compose up -d` | Local/Self-hosted |
+## Project structure
 
-**Production endpoint:** `https://glyx-mcp-996426597393.us-central1.run.app`
-
-### Health & Monitoring
-
-```bash
-# Basic health check
-curl https://glyx-mcp-996426597393.us-central1.run.app/health
-
-# API documentation
-curl https://glyx-mcp-996426597393.us-central1.run.app/docs
-
-# Check API version
-curl -s https://glyx-mcp-996426597393.us-central1.run.app/openapi.json | jq '.info.version'
+```
+glyx-mcp/
+├── src/
+│   ├── api/                  # FastAPI server + routes
+│   │   ├── routes/           # REST endpoints
+│   │   ├── webhooks/         # GitHub, Linear webhooks
+│   │   ├── integrations/     # Agent integrations
+│   │   ├── session.py        # Auth + token management
+│   │   ├── local_executor.py # Realtime task executor
+│   │   └── server.py         # App entrypoint
+│   ├── glyx_mcp/             # MCP protocol server
+│   ├── python-sdk/           # Glyx Python SDK
+│   └── framework/            # Agent framework
+├── scripts/                  # Dev tools + pairing display
+├── infra/                    # Terraform (GCP)
+├── supabase/                 # Migrations
+└── tests/                    # pytest suite
 ```
 
-### MCP Client Configuration
+## Related projects
 
-**Production (Cloud Run):**
-```json
-{
-  "mcpServers": {
-    "glyx-ai": {
-      "transport": {
-        "type": "http",
-        "url": "https://glyx-mcp-996426597393.us-central1.run.app/mcp"
-      }
-    }
-  }
-}
-```
-
-**Local:**
-```json
-{
-  "mcpServers": {
-    "glyx-ai": {
-      "transport": {
-        "type": "http",
-        "url": "http://localhost:8080/mcp"
-      }
-    }
-  }
-}
-```
-
-### Documentation
-
-- 📚 [**API Documentation**](https://glyx-mcp-docs.mintlify.app) - Interactive API docs with Mintlify
-- 📖 [PRODUCTION_READY.md](PRODUCTION_READY.md) - Start here for deployment
-- 🚀 [QUICKSTART.md](QUICKSTART.md) - Quick start guide
-- 📚 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - Complete deployment guide
-- 📊 [DEPLOYMENT_SUMMARY.md](DEPLOYMENT_SUMMARY.md) - Full overview
-- 🔧 [docs/MINTLIFY_SETUP.md](docs/MINTLIFY_SETUP.md) - Mintlify documentation setup
-
-### What's Included
-
-- ✅ Automated deployment script with validation
-- ✅ Health check endpoints with component monitoring
-- ✅ Production-optimized Docker images
-- ✅ Pre-deployment validation tool
-- ✅ Security hardening (JWT, CORS, secrets)
-- ✅ Performance metrics and uptime tracking
-- ✅ Comprehensive documentation
-
----
-
-## Contributing
-
-PRs welcome. Please follow the style guidelines above and keep code clear, typed, and well-factored. Run mypy, ruff, and tests before submitting.
+| Project | Description |
+|---------|-------------|
+| [glyx-ios](https://github.com/glyx-ai/glyx-ios) | iOS app (Swift/SwiftUI) |
+| [glyx](https://github.com/glyx-ai/glyx) | Web frontend (Next.js) at [glyx.ai](https://glyx.ai) |
 
 ## License
 
