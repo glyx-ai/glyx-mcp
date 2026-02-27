@@ -24,53 +24,61 @@ async def get_pair_script() -> str:
     return PAIR_SCRIPT
 
 
-PAIR_SCRIPT = r'''#!/bin/bash
+PAIR_SCRIPT = r"""#!/bin/bash
 # Glyx Device Pairing Script
 # Usage: curl -sL glyx.ai/pair | bash
-#
-# Bash handles the noisy bootstrap (uv, git, deps) silently,
-# then hands off to a Rich-powered Python script for all display.
 set -e
 
-# ── Colors (only for the bootstrap phase) ───────────────────
-P='\033[1;35m'; G='\033[1;32m'; D='\033[2m'; R='\033[0m'
-SPIN=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
-_pid=""
+# ── 256-color palette ────────────────────────────────────────
+P='\033[38;5;135m'    # brand purple
+PB='\033[1;38;5;135m' # brand purple bold
+C='\033[38;5;81m'     # cyan
+G='\033[38;5;114m'    # green
+W='\033[1;37m'        # white bold
+D='\033[38;5;243m'    # dim gray
+R='\033[0m'           # reset
 
+# ── Spinner ──────────────────────────────────────────────────
+FRAMES=('⣾' '⣽' '⣻' '⢿' '⡿' '⣟' '⣯' '⣷')
+_pid=""
 spin() {
-    printf '\033[?25l'
     ( i=0; while :; do
-        printf "\r  ${P}${SPIN[$((i%10))]}${R}  %s" "$1"
-        sleep 0.08; i=$((i+1))
+        printf "\r  ${C}${FRAMES[$((i%8))]}${R}  ${W}%s${R}\033[K" "$1"
+        sleep 0.07; ((i++))
     done ) & _pid=$!
 }
 ok() {
     kill "$_pid" 2>/dev/null
     wait "$_pid" 2>/dev/null || true
-    printf "\r  ${G}✓${R}  %s\n" "$1"
-    printf '\033[?25h'
+    printf "\r  ${G}✓${R}  %s\033[K\n" "$1"
 }
-ok_skip() { printf "  ${G}✓${R}  %s\n" "$1"; }
+skip() { printf "  ${G}✓${R}  ${D}%s${R}\n" "$1"; }
 
-# ── Config ──────────────────────────────────────────────────
+# ── Config ───────────────────────────────────────────────────
 GLYX_DIR="$HOME/.glyx"
 REPO_DIR="$GLYX_DIR/glyx-mcp"
 REPO_URL="https://github.com/glyx-ai/glyx-mcp.git"
 mkdir -p "$GLYX_DIR"
 
-cleanup() { printf '\033[?25h'; jobs -p 2>/dev/null | xargs kill 2>/dev/null||true; exit 0; }
-trap cleanup INT TERM
+cleanup() {
+    printf '\033[?25h'
+    jobs -p 2>/dev/null | xargs kill 2>/dev/null || true
+}
+trap cleanup INT TERM EXIT
 
-# ── Bootstrap header ────────────────────────────────────────
+# ── Immediate output ─────────────────────────────────────────
+printf '\033[?25l'
 clear
 printf "\n"
-printf "  ${P}   ██████╗ ██╗  ██╗   ██╗██╗  ██╗${R}\n"
-printf "  ${P}  ██╔════╝ ██║  ╚██╗ ██╔╝╚██╗██╔╝${R}\n"
-printf "  ${P}  ██║  ███╗██║   ╚████╔╝  ╚███╔╝ ${R}\n"
-printf "  ${P}  ██║   ██║██║    ╚██╔╝   ██╔██╗ ${R}\n"
-printf "  ${P}  ╚██████╔╝██████╗ ██║   ██╔╝ ██╗${R}\n"
-printf "  ${P}   ╚═════╝ ╚═════╝ ╚═╝   ╚═╝  ╚═╝${R}\n"
-printf "\n  ${D}Setting up your machine...${R}\n\n"
+printf "  ${PB}   ██████╗ ██╗  ██╗   ██╗██╗  ██╗${R}\n"
+printf "  ${PB}  ██╔════╝ ██║  ╚██╗ ██╔╝╚██╗██╔╝${R}\n"
+printf "  ${PB}  ██║  ███╗██║   ╚████╔╝  ╚███╔╝ ${R}\n"
+printf "  ${PB}  ██║   ██║██║    ╚██╔╝   ██╔██╗ ${R}\n"
+printf "  ${PB}  ╚██████╔╝██████╗ ██║   ██╔╝ ██╗${R}\n"
+printf "  ${PB}   ╚═════╝ ╚═════╝ ╚═╝   ╚═╝  ╚═╝${R}\n"
+printf "\n"
+printf "  ${D}Control AI coding agents from your phone.${R}\n"
+printf "  ${D}──────────────────────────────────────────${R}\n\n"
 
 # ── Step 1: uv ──────────────────────────────────────────────
 if ! command -v uv &>/dev/null; then
@@ -79,7 +87,7 @@ if ! command -v uv &>/dev/null; then
     export PATH="$HOME/.local/bin:$PATH"
     ok "Installed uv"
 else
-    ok_skip "uv"
+    skip "uv"
 fi
 
 # ── Step 2: Repository ──────────────────────────────────────
@@ -99,6 +107,9 @@ cd "$REPO_DIR"
 uv sync >/dev/null 2>&1
 ok "Dependencies ready"
 
+printf "\n"
+
 # ── Hand off to Rich ────────────────────────────────────────
+printf '\033[?25h'
 exec uv run python3 scripts/pair_display.py
-'''
+"""

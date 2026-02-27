@@ -8,6 +8,7 @@ import os
 import platform
 import shutil
 import socket
+import time
 import uuid
 from pathlib import Path
 
@@ -21,7 +22,6 @@ from rich.text import Text
 # ── Brand palette ───────────────────────────────────────────
 BRAND = "bright_magenta"
 ACCENT = "cyan"
-SUCCESS = "green"
 DIM = "dim"
 
 GLYX_DIR = Path.home() / ".glyx"
@@ -123,18 +123,20 @@ def info_panel(env: dict[str, str | int | list[str]]) -> Panel:
 
 
 def main() -> None:
-    # Detect environment with spinner
-    with console.status(f"[{BRAND}]Detecting environment...", spinner="dots"):
-        env = {
-            "device_id": get_or_create_device_id(),
-            "hostname": platform.node().split(".")[0],
-            "username": os.getenv("USER", "unknown"),
-            "agents": detect_agents(),
-            "ip": get_local_ip(),
-            "port": SERVER_PORT,
-        }
+    # Detect environment (fast -- no spinner needed)
+    env = {
+        "device_id": get_or_create_device_id(),
+        "hostname": platform.node().split(".")[0],
+        "username": os.getenv("USER", "unknown"),
+        "agents": detect_agents(),
+        "ip": get_local_ip(),
+        "port": SERVER_PORT,
+    }
 
     payload = build_qr_payload(env)
+
+    # Brief pause so bash checkmarks are visible before we clear
+    time.sleep(0.4)
 
     # Render the pairing screen
     console.clear()
@@ -144,7 +146,7 @@ def main() -> None:
     console.print(qr_panel(payload))
     console.print(info_panel(env))
     console.print()
-    console.print(Align.center(Text("Waiting for connection...  Press Ctrl+C to exit", style=DIM)))
+    console.print(Align.center(Text("Waiting for connection ...  Ctrl+C to exit", style=DIM)))
     console.print()
 
     # Hand off to the MCP server
