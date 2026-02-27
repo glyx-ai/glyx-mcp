@@ -115,8 +115,18 @@ command -v codex &>/dev/null && AGENTS="${AGENTS}codex,"
 command -v aider &>/dev/null && AGENTS="${AGENTS}aider,"
 AGENTS="${AGENTS%,}"
 
+# Detect local IP for token provisioning
+LOCAL_IP=$(python3 -c "
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.connect(('8.8.8.8', 80))
+print(s.getsockname()[0])
+s.close()
+" 2>/dev/null || echo "localhost")
+SERVER_PORT=8000
+
 # Build QR payload
-QR_PAYLOAD="glyx://pair?device_id=${DEVICE_ID}&host=${HOSTNAME}&user=${USER}&name=${HOSTNAME}"
+QR_PAYLOAD="glyx://pair?device_id=${DEVICE_ID}&host=${HOSTNAME}&user=${USER}&name=${HOSTNAME}&ip=${LOCAL_IP}&server_port=${SERVER_PORT}"
 [[ -n "$AGENTS" ]] && QR_PAYLOAD="${QR_PAYLOAD}&agents=${AGENTS}"
 
 # Show QR code
@@ -154,5 +164,14 @@ echo ""
 # Sync dependencies and start server
 cd "$REPO_DIR"
 uv sync --extra dev
+
+# Source credentials if available
+GLYX_ENV="$GLYX_DIR/env"
+if [[ -f "$GLYX_ENV" ]]; then
+    set -a
+    source "$GLYX_ENV"
+    set +a
+fi
+
 GLYX_DEVICE_ID="$DEVICE_ID" exec uv run task dev
 '''

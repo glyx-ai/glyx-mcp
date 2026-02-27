@@ -30,7 +30,11 @@ from fastmcp.server.dependencies import get_access_token
 logger = get_logger(__name__)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://vpopliwokdmpxhmippwc.supabase.co")
-SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+# Publishable key — safe for client-side use, already embedded in iOS app binary
+SUPABASE_ANON_KEY = os.environ.get(
+    "SUPABASE_ANON_KEY",
+    "sb_publishable_PFYg1B15pdweWFaL6BRDCQ_SnX-BbZf",
+)
 
 
 def _get_user_id() -> Optional[str]:

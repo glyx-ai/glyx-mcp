@@ -1,10 +1,13 @@
 """
-Local agent executor - runs tasks on the local machine.
+Local agent executor — runs tasks on the local machine.
 
 Subscribes to Supabase Realtime for agent_tasks where device_id matches
 this machine, executes tasks using ComposableAgent, and sends notifications.
 
-This runs as part of the FastAPI server lifespan, not as a standalone process.
+Auth modes (in priority order):
+  1. SERVICE_ROLE  — SUPABASE_SERVICE_ROLE_KEY from env (development only)
+  2. USER_TOKEN    — access + refresh token from ~/.glyx/session (end users)
+  3. UNPROVISIONED — waits for iOS to POST /api/auth/provision after QR pairing
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from typing import Any
 
 from glyx_python_sdk.agent_types import AgentKey
@@ -21,9 +25,22 @@ from knockapi import Knock
 from supabase._async.client import AsyncClient
 from supabase._async.client import create_client as create_async_client
 
+from api.session import (
+    AuthMode,
+    SessionTokens,
+    TOKEN_REFRESH_INTERVAL_SECONDS,
+    load_session,
+    refresh_session,
+    resolve_auth_mode,
+    save_session,
+    validate_access_token,
+)
+
 logger = logging.getLogger(__name__)
 
-# Map agent_type strings from database to AgentKey enum
+# Signalled by POST /api/auth/provision to wake the provision watcher
+_provision_event: asyncio.Event | None = None
+
 AGENT_KEY_MAP: dict[str, AgentKey] = {
     "claude": AgentKey.CLAUDE,
     "claude-code": AgentKey.CLAUDE,
@@ -36,25 +53,29 @@ AGENT_KEY_MAP: dict[str, AgentKey] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Device ID loader
+# ---------------------------------------------------------------------------
+
+
 def _load_device_id() -> str | None:
     """Load device ID from env or ~/.glyx/device_id."""
-    # Check env first
     device_id = os.environ.get("GLYX_DEVICE_ID")
     if device_id:
         return device_id.lower()
 
-    # Check file
-    device_id_file = os.path.expanduser("~/.glyx/device_id")
+    path = os.path.expanduser("~/.glyx/device_id")
     try:
-        if os.path.exists(device_id_file):
-            with open(device_id_file) as f:
-                device_id = f.read().strip()
-                if device_id:
-                    return device_id.lower()
-    except Exception as e:
-        logger.debug(f"Could not read device ID from file: {e}")
+        with open(path) as f:
+            value = f.read().strip()
+            return value.lower() if value else None
+    except FileNotFoundError:
+        return None
 
-    return None
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
 
 
 def _send_notification(
@@ -81,7 +102,7 @@ def _send_notification(
         "agent-error": "error",
     }
 
-    payload = {
+    payload: dict[str, Any] = {
         "event_type": event_type_map.get(workflow_key, workflow_key),
         "agent_type": agent_type,
         "session_id": task_id,
@@ -104,33 +125,150 @@ def _send_notification(
         logger.warning(f"[KNOCK] Failed: {e}")
 
 
+# ---------------------------------------------------------------------------
+# LocalExecutor
+# ---------------------------------------------------------------------------
+
+
 class LocalExecutor:
     """Executes agent tasks locally via Supabase Realtime subscription."""
 
-    def __init__(self, device_id: str):
+    def __init__(self, device_id: str) -> None:
         self.device_id = device_id
         self.supabase: AsyncClient | None = None
         self.running = False
+        self.auth_mode = AuthMode.UNPROVISIONED
         self.task_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        self._channel = None
-        self._tasks: list[asyncio.Task] = []
+        self._channel: Any = None
+        self._tasks: list[asyncio.Task[None]] = []
+        self._refresh_token: str | None = None
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        """Start the executor - subscribe to Realtime and process tasks."""
-        if not settings.supabase_url or not settings.supabase_service_role_key:
-            logger.warning("[LocalExecutor] Missing Supabase credentials, not starting")
+        """Start the executor. Resolves auth mode and connects to Realtime."""
+        if not settings.supabase_url:
+            logger.warning("[Executor] Missing SUPABASE_URL, not starting")
             return
 
-        logger.info(f"[LocalExecutor] Starting for device: {self.device_id}")
-        logger.info(f"[LocalExecutor] Knock configured: {bool(settings.knock_api_key)}")
+        logger.info(f"[Executor] Device: {self.device_id}")
+        logger.info(f"[Executor] Knock: {bool(settings.knock_api_key)}")
 
+        mode = resolve_auth_mode()
+
+        if mode == AuthMode.SERVICE_ROLE:
+            await self._start_with_service_role()
+        elif mode == AuthMode.USER_TOKEN:
+            await self._start_with_user_token()
+        else:
+            logger.info("[Executor] Waiting for iOS to provision via QR pairing...")
+            self._spawn(self._wait_for_provision())
+
+    async def stop(self) -> None:
+        """Stop the executor and clean up."""
+        logger.info("[Executor] Stopping...")
+        self.running = False
+        for task in self._tasks:
+            task.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        if self._channel:
+            await self._channel.unsubscribe()
+        logger.info("[Executor] Stopped")
+
+    # ------------------------------------------------------------------
+    # Auth strategies
+    # ------------------------------------------------------------------
+
+    async def _start_with_service_role(self) -> None:
+        """Connect using service role key (development only)."""
+        logger.info("[Executor] Auth: service_role (development)")
+        self.auth_mode = AuthMode.SERVICE_ROLE
         self.supabase = await create_async_client(
             settings.supabase_url,
             settings.supabase_service_role_key,
         )
-        self.running = True
+        await self._subscribe_and_run()
 
-        # Subscribe to Realtime
+    async def _start_with_user_token(self) -> bool:
+        """Connect using user-scoped session from ~/.glyx/session. Returns success."""
+        tokens = load_session()
+        if not tokens:
+            return False
+
+        valid_token = self._ensure_valid_token(tokens)
+        if not valid_token:
+            logger.warning("[Executor] Stored session invalid, refresh failed")
+            return False
+
+        logger.info("[Executor] Auth: user_token")
+        self.auth_mode = AuthMode.USER_TOKEN
+        self._refresh_token = valid_token.refresh_token
+
+        self.supabase = await create_async_client(
+            settings.supabase_url,
+            settings.supabase_anon_key,
+        )
+        await self.supabase.auth.set_session(valid_token.access_token, valid_token.refresh_token)
+        await self._subscribe_and_run()
+        self._spawn(self._token_refresh_loop())
+        return True
+
+    def _ensure_valid_token(self, tokens: SessionTokens) -> SessionTokens | None:
+        """Validate access token; refresh if expired."""
+        if validate_access_token(tokens.access_token):
+            return tokens
+        refreshed = refresh_session(tokens.refresh_token)
+        return refreshed
+
+    # ------------------------------------------------------------------
+    # Token refresh
+    # ------------------------------------------------------------------
+
+    async def _token_refresh_loop(self) -> None:
+        """Periodically refresh the access token before it expires."""
+        while self.running and self.auth_mode == AuthMode.USER_TOKEN:
+            await asyncio.sleep(TOKEN_REFRESH_INTERVAL_SECONDS)
+            if not self._refresh_token:
+                continue
+
+            refreshed = refresh_session(self._refresh_token)
+            if refreshed and self.supabase:
+                self._refresh_token = refreshed.refresh_token
+                await self.supabase.auth.set_session(refreshed.access_token, refreshed.refresh_token)
+                logger.info("[Executor] Token refreshed")
+            else:
+                logger.error("[Executor] Token refresh failed, re-provisioning needed")
+                self.auth_mode = AuthMode.UNPROVISIONED
+
+    # ------------------------------------------------------------------
+    # Provision watcher
+    # ------------------------------------------------------------------
+
+    async def _wait_for_provision(self) -> None:
+        """Block until iOS provisions credentials, then start."""
+        global _provision_event
+        _provision_event = asyncio.Event()
+
+        while self.auth_mode == AuthMode.UNPROVISIONED:
+            try:
+                await asyncio.wait_for(_provision_event.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                pass
+            _provision_event.clear()
+
+            if await self._start_with_user_token():
+                logger.info("[Executor] Provisioned — now running")
+                return
+
+    # ------------------------------------------------------------------
+    # Realtime subscription
+    # ------------------------------------------------------------------
+
+    async def _subscribe_and_run(self) -> None:
+        """Subscribe to Realtime and start the task processor."""
+        self.running = True
         self._channel = self.supabase.channel(f"executor-{self.device_id}")
         self._channel.on_postgres_changes(
             event="INSERT",
@@ -139,65 +277,37 @@ class LocalExecutor:
             callback=self._on_task_insert,
         )
         await self._channel.subscribe()
-        logger.info(f"[LocalExecutor] Subscribed to Realtime")
+        logger.info(f"[Executor] Subscribed to Realtime ({self.auth_mode})")
 
-        # Start task processor
-        processor = asyncio.create_task(self._process_tasks())
-        self._tasks.append(processor)
-
-        # Poll for any pending tasks on startup
+        self._spawn(self._process_tasks())
         await self._poll_pending_tasks()
-
-    async def stop(self) -> None:
-        """Stop the executor."""
-        logger.info("[LocalExecutor] Stopping...")
-        self.running = False
-
-        for task in self._tasks:
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-
-        if self._channel:
-            await self._channel.unsubscribe()
-
-        logger.info("[LocalExecutor] Stopped")
 
     def _on_task_insert(self, payload: dict[str, Any]) -> None:
         """Handle new task from Realtime."""
-        # Extract task data (handle different payload formats)
-        new_task = payload.get("new", {})
+        new_task = (
+            payload.get("new")
+            or (payload.get("data", {}) or {}).get("record")
+            or payload.get("record")
+            or {}
+        )
         if not new_task:
-            data = payload.get("data", {})
-            if isinstance(data, dict):
-                new_task = data.get("record", {})
-            if not new_task:
-                new_task = payload.get("record", {})
+            logger.warning("[Executor] Empty Realtime payload")
+            return
 
-        if not new_task:
-            logger.warning("[LocalExecutor] No task data in payload")
+        if new_task.get("device_id") != self.device_id:
+            return
+        if new_task.get("status") != "pending":
             return
 
         task_id = new_task.get("id")
-        task_device_id = new_task.get("device_id")
-        task_status = new_task.get("status")
-
-        # Only process tasks for this device that are pending
-        if task_device_id != self.device_id:
-            return
-        if task_status != "pending":
-            return
-
-        logger.info(f"[LocalExecutor] Queuing task {task_id}")
+        logger.info(f"[Executor] Queuing task {task_id}")
         try:
             self.task_queue.put_nowait(new_task)
         except asyncio.QueueFull:
-            logger.error(f"[LocalExecutor] Queue full, dropping task {task_id}")
+            logger.error(f"[Executor] Queue full, dropping task {task_id}")
 
     async def _poll_pending_tasks(self) -> None:
-        """Poll for pending tasks on startup."""
+        """Pick up any pending tasks from before we started."""
         try:
             result = (
                 await self.supabase.table("agent_tasks")
@@ -206,76 +316,75 @@ class LocalExecutor:
                 .eq("status", "pending")
                 .execute()
             )
+            for task in result.data or []:
+                self.task_queue.put_nowait(task)
             if result.data:
-                logger.info(f"[LocalExecutor] Found {len(result.data)} pending tasks")
-                for task in result.data:
-                    self.task_queue.put_nowait(task)
+                logger.info(f"[Executor] Found {len(result.data)} pending tasks")
         except Exception as e:
-            logger.error(f"[LocalExecutor] Poll failed: {e}")
+            logger.error(f"[Executor] Poll failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Task execution
+    # ------------------------------------------------------------------
 
     async def _process_tasks(self) -> None:
         """Process tasks from the queue."""
         while self.running:
             try:
                 task = await asyncio.wait_for(self.task_queue.get(), timeout=1.0)
-                await self._execute_task(task)
-                self.task_queue.task_done()
             except asyncio.TimeoutError:
                 continue
+
+            try:
+                await self._execute_task(task)
             except Exception as e:
-                logger.error(f"[LocalExecutor] Task processing error: {e}")
+                logger.error(f"[Executor] Task processing error: {e}")
+            finally:
+                self.task_queue.task_done()
 
     async def _execute_task(self, task: dict[str, Any]) -> None:
-        """Execute a single task."""
+        """Execute a single agent task."""
         task_id = task["id"]
         agent_type = task.get("agent_type", "shell")
         task_type = task.get("task_type", "command")
         payload = task.get("payload", {})
         user_id = task.get("user_id")
         device_name = task.get("device_name")
+        prompt = payload.get("prompt", "")
+        cwd = payload.get("cwd") or payload.get("working_dir")
 
         logger.info(f"[{task_id}] Executing: agent={agent_type}, type={task_type}")
-
-        cwd = payload.get("cwd") or payload.get("working_dir")
-        prompt = payload.get("prompt", "")
-
-        # Update status to running
         await self._update_status(task_id, "running")
 
-        # Send start notification
         if user_id:
             _send_notification(
                 user_id=user_id,
                 task_id=task_id,
                 workflow_key="agent-start",
                 agent_type=agent_type,
-                task_summary=prompt[:200] if prompt else "Task started",
+                task_summary=prompt[:200] or "Task started",
                 device_name=device_name,
             )
 
         agent_key = AGENT_KEY_MAP.get(agent_type)
-
-        if agent_key and task_type == "prompt" and prompt:
-            exit_code, output, exec_time = await self._run_agent(
-                task_id, agent_key, prompt, cwd, user_id, device_name
-            )
-        else:
-            # Unsupported task type
+        if not (agent_key and task_type == "prompt" and prompt):
             await self._update_status(task_id, "failed", error="Unsupported task type")
             return
 
-        # Update final status
+        exit_code, output, exec_time = await self._run_agent(
+            task_id, agent_key, prompt, cwd, user_id, device_name,
+        )
+
         final_status = "completed" if exit_code == 0 else "failed"
         await self._update_status(task_id, final_status, exit_code=exit_code)
 
-        # Send completion notification
         if user_id:
             _send_notification(
                 user_id=user_id,
                 task_id=task_id,
                 workflow_key="agent-error" if exit_code != 0 else "agent-completed",
                 agent_type=agent_type,
-                task_summary=prompt[:200] if prompt else "Task completed",
+                task_summary=prompt[:200] or "Task completed",
                 device_name=device_name,
                 execution_time_s=exec_time,
             )
@@ -289,9 +398,7 @@ class LocalExecutor:
         user_id: str | None,
         device_name: str | None,
     ) -> tuple[int, str, float]:
-        """Run an agent and stream output."""
-        import time
-
+        """Run an agent and stream output back to Supabase."""
         start_time = time.time()
         agent = ComposableAgent.from_key(agent_key)
 
@@ -303,8 +410,8 @@ class LocalExecutor:
             "device_name": device_name,
         }
 
-        full_output = []
-        output_buffer = []
+        full_output: list[str] = []
+        output_buffer: list[str] = []
         last_flush = time.time()
         exit_code = 0
 
@@ -319,32 +426,18 @@ class LocalExecutor:
                         output_buffer.append(content + "\n")
 
                 elif event_type == "agent_event":
-                    parsed = event.get("event", {})
-                    if isinstance(parsed, dict):
-                        msg_type = parsed.get("type", "")
-                        if msg_type == "assistant":
-                            message = parsed.get("message", {})
-                            content_blocks = message.get("content", []) if isinstance(message, dict) else []
-                            for block in content_blocks:
-                                if isinstance(block, dict) and block.get("type") == "text":
-                                    text = block.get("text", "")
-                                    if text:
-                                        full_output.append(text)
-                                        output_buffer.append(text)
+                    self._extract_text_blocks(event, full_output, output_buffer)
 
                 elif event_type == "agent_complete":
                     exit_code = event.get("exit_code", 0)
 
-                # Flush output buffer periodically
+                # Flush periodically
                 now = time.time()
-                if now - last_flush > 0.5 or len(output_buffer) > 10:
-                    if output_buffer:
-                        chunk = "".join(output_buffer)
-                        await self._update_status(task_id, output=chunk)
-                        output_buffer.clear()
-                        last_flush = now
+                if (now - last_flush > 0.5 or len(output_buffer) > 10) and output_buffer:
+                    await self._update_status(task_id, output="".join(output_buffer))
+                    output_buffer.clear()
+                    last_flush = now
 
-            # Flush remaining
             if output_buffer:
                 await self._update_status(task_id, output="".join(output_buffer))
 
@@ -353,6 +446,26 @@ class LocalExecutor:
             return 1, str(e), time.time() - start_time
 
         return exit_code, "\n".join(full_output), time.time() - start_time
+
+    @staticmethod
+    def _extract_text_blocks(
+        event: dict[str, Any],
+        full_output: list[str],
+        output_buffer: list[str],
+    ) -> None:
+        """Extract text content blocks from an agent_event."""
+        parsed = event.get("event", {})
+        if not isinstance(parsed, dict) or parsed.get("type") != "assistant":
+            return
+        message = parsed.get("message", {})
+        if not isinstance(message, dict):
+            return
+        for block in message.get("content", []):
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text", "")
+                if text:
+                    full_output.append(text)
+                    output_buffer.append(text)
 
     async def _update_status(
         self,
@@ -376,11 +489,9 @@ class LocalExecutor:
 
         if error:
             update_data["error"] = error
-
         if exit_code is not None:
             update_data["exit_code"] = exit_code
 
-        # For output, we need to append
         if output:
             try:
                 existing = (
@@ -390,7 +501,7 @@ class LocalExecutor:
                     .single()
                     .execute()
                 )
-                existing_output = existing.data.get("output") or "" if existing.data else ""
+                existing_output = (existing.data or {}).get("output") or ""
                 update_data["output"] = existing_output + output
             except Exception:
                 update_data["output"] = output
@@ -400,8 +511,19 @@ class LocalExecutor:
         except Exception as e:
             logger.error(f"[{task_id}] Failed to update status: {e}")
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
-# Global executor instance
+    def _spawn(self, coro: Any) -> None:
+        """Create and track a background task."""
+        self._tasks.append(asyncio.create_task(coro))
+
+
+# ---------------------------------------------------------------------------
+# Module-level API
+# ---------------------------------------------------------------------------
+
 _executor: LocalExecutor | None = None
 
 
@@ -411,10 +533,9 @@ async def start_local_executor() -> None:
 
     device_id = _load_device_id()
     if not device_id:
-        logger.info("[LocalExecutor] No device_id found, local execution disabled")
+        logger.info("[Executor] No device_id found, local execution disabled")
         return
 
-    logger.info(f"[LocalExecutor] Starting for device: {device_id}")
     _executor = LocalExecutor(device_id)
     await _executor.start()
 
@@ -422,7 +543,12 @@ async def start_local_executor() -> None:
 async def stop_local_executor() -> None:
     """Stop the local executor."""
     global _executor
-
     if _executor:
         await _executor.stop()
         _executor = None
+
+
+async def notify_session_provisioned() -> None:
+    """Called by POST /api/auth/provision to wake the executor."""
+    if _provision_event:
+        _provision_event.set()
