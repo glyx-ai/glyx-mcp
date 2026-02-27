@@ -20,6 +20,7 @@ dependencies = [
     "gql[all]>=4.0.0",
     "strenum>=0.4.15",
     "rich>=13.0.0",
+    "segno>=1.6.0",
     "taskipy>=1.12.0",
 ]
 
@@ -67,6 +68,16 @@ test = "pytest tests/ -v"
 test-unit = "pytest tests/unit/ -v -n auto"
 test-integration = "pytest tests/integration/ -v -s -m integration"
 test-cov = "pytest tests/ -v --cov=glyx_mcp --cov=api"
+test-hitl = "pytest tests/test_hitl_integration.py -v -s"
+
+# HITL & Notification Testing (manual)
+hitl-create = "python scripts/test_hitl.py create --prompt"
+hitl-list = "python scripts/test_hitl.py list"
+hitl-e2e = "python scripts/test_hitl.py e2e --auto-respond"
+notify-hitl = "python scripts/test_notifications.py hitl --prompt"
+notify-start = "python scripts/test_notifications.py agent-start --summary"
+notify-done = "python scripts/test_notifications.py agent-completed --summary"
+notify-error = "python scripts/test_notifications.py agent-error --summary"
 
 # Linting
 lint = "ruff check . && ruff format --check ."
