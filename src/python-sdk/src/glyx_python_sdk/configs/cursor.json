@@ -1,0 +1,99 @@
+{
+  "cursor": {
+    "command": "cursor-agent",
+    "description": "Deploy Cursor Cloud Agent for autonomous coding. Supports Opus 4.5 Thinking, Sonnet 4.5 Thinking, Gemini 3 Pro, GPT-5.1, GPT-5 Codex, Grok, and Auto model selection. Uses headless CLI mode (-p) for programmatic automation in CI/CD pipelines. Agents can clone repos, make changes, create branches, and open PRs autonomously.",
+    "version": "2.1.34",
+    "api_base": "https://cursor.com/api/v0",
+    "api_endpoints": {
+      "list_agents": "GET /v0/agents",
+      "get_agent": "GET /v0/agents/{id}",
+      "launch_agent": "POST /v0/agents",
+      "followup": "POST /v0/agents/{id}/followup",
+      "delete_agent": "DELETE /v0/agents/{id}",
+      "list_models": "GET /v0/models",
+      "api_key_info": "GET /v0/me"
+    },
+    "available_models": [
+      "auto",
+      "composer-1",
+      "opus-4.5",
+      "opus-4.5-thinking",
+      "sonnet-4.5",
+      "sonnet-4.5-thinking",
+      "opus-4.1",
+      "gemini-3-pro",
+      "gpt-5",
+      "gpt-5.1",
+      "gpt-5-high",
+      "gpt-5.1-high",
+      "gpt-5-codex",
+      "gpt-5-codex-high",
+      "gpt-5.1-codex",
+      "gpt-5.1-codex-high",
+      "grok"
+    ],
+    "args": {
+      "prompt": {
+        "flag": "",
+        "required": true,
+        "description": "Task instructions for the Cursor agent. Be specific about what code changes to make.",
+        "type": "string",
+        "default": ""
+      },
+      "print_mode": {
+        "flag": "-p",
+        "required": false,
+        "description": "Enable non-interactive print mode for headless/CI automation. Required for programmatic usage.",
+        "type": "bool",
+        "default": "true"
+      },
+      "model": {
+        "flag": "--model",
+        "required": false,
+        "description": "Model selection: auto, opus-4.5-thinking, sonnet-4.5-thinking, gemini-3-pro, gpt-5.1, gpt-5-codex, grok. Defaults to auto for intelligent model selection.",
+        "type": "string",
+        "default": "auto"
+      },
+      "force": {
+        "flag": "--force",
+        "required": false,
+        "description": "Allow direct file modifications without confirmation prompts. Use with caution.",
+        "type": "bool",
+        "default": "false"
+      },
+      "output_format": {
+        "flag": "--output-format",
+        "required": false,
+        "description": "Output format: text (human-readable), json (structured single result), stream-json (NDJSON realtime events)",
+        "type": "string",
+        "default": "json"
+      },
+      "api_key": {
+        "flag": "--api-key",
+        "required": false,
+        "description": "Cursor API key for authentication. Can also use CURSOR_API_KEY env var.",
+        "type": "string",
+        "default": ""
+      }
+    },
+    "env_vars": {
+      "CURSOR_API_KEY": "API key for headless authentication (obtain from cursor.com/settings)"
+    },
+    "capabilities": [
+      "autonomous_coding",
+      "cloud_agent",
+      "multi_model",
+      "git_integration",
+      "pr_creation",
+      "ci_cd_integration",
+      "mcp_support",
+      "extended_thinking"
+    ],
+    "notes": {
+      "authentication": "Use CURSOR_API_KEY env var or --api-key flag for headless mode",
+      "rate_limits": "Repository listing: 1 req/min, 30 req/hour",
+      "thinking_models": "opus-4.5-thinking and sonnet-4.5-thinking support extended thinking with tool use",
+      "auto_model": "Recommended: let Cursor auto-select the best model for the task"
+    }
+  }
+}

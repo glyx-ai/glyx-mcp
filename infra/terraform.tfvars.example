@@ -1,0 +1,35 @@
+# =============================================================================
+# Terraform Variables - Copy to terraform.tfvars and fill in values
+# =============================================================================
+
+# GCP Configuration
+project_id  = "your-gcp-project-id"
+region      = "us-central1"
+environment = "production"
+
+# Service Configuration
+service_name  = "glyx-mcp"
+memory        = "1Gi"
+cpu           = "1"
+min_instances = 0
+max_instances = 10
+timeout       = 300
+concurrency   = 80
+
+# API Keys (sensitive - never commit actual values!)
+anthropic_api_key = "sk-ant-..."
+openai_api_key    = "sk-..."
+openrouter_api_key = "sk-or-..."
+
+# Supabase Configuration
+supabase_url              = "https://your-project.supabase.co"
+supabase_anon_key         = "eyJ..."
+supabase_service_role_key = ""  # Deprecated - use supabase_secret_key instead
+
+# DEPRECATED: Legacy service user (no longer used, kept for state compatibility)
+# daemon_user_email    = ""
+# daemon_user_password = ""
+
+# Optional Services
+mem0_api_key  = ""
+logfire_token = ""

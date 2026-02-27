@@ -1,0 +1,125 @@
+{
+  "cli_name": "heroku",
+  "description": "Heroku CLI - Manage Heroku apps from command line",
+  "global_flags": [
+    {"short": "-a", "long": "--app", "description": "app to run command against", "type": "string"},
+    {"short": "-r", "long": "--remote", "description": "git remote of app to use", "type": "string"}
+  ],
+  "commands": {
+    "apps": {
+      "description": "manage apps on Heroku",
+      "subcommands": {
+        "create": {
+          "usage": "heroku apps:create [APP]",
+          "description": "creates a new app",
+          "positional_args": [
+            {"name": "APP", "required": false, "description": "name of app to create"}
+          ],
+          "flags": [
+            {"long": "--region", "short": "-r", "type": "string", "description": "specify region for the app", "choices": ["us", "eu"]},
+            {"long": "--space", "type": "string", "description": "the private space to create the app in"},
+            {"long": "--team", "short": "-t", "type": "string", "description": "team to use"},
+            {"long": "--json", "type": "bool", "description": "output in json format"}
+          ],
+          "mutually_exclusive": [["--space", "--team"]]
+        },
+        "destroy": {
+          "usage": "heroku apps:destroy [APP]",
+          "description": "permanently destroy an app",
+          "positional_args": [
+            {"name": "APP", "required": false, "description": "name of app to destroy"}
+          ],
+          "flags": [
+            {"long": "--confirm", "short": "-c", "type": "string", "description": "confirm by app name"}
+          ]
+        },
+        "info": {
+          "usage": "heroku apps:info [APP]",
+          "description": "show detailed app information",
+          "positional_args": [
+            {"name": "APP", "required": false}
+          ],
+          "flags": [
+            {"long": "--json", "short": "-j", "type": "bool"},
+            {"long": "--shell", "short": "-s", "type": "bool"}
+          ]
+        }
+      }
+    },
+    "config": {
+      "description": "display config vars",
+      "subcommands": {
+        "set": {
+          "usage": "heroku config:set KEY=VALUE [KEY=VALUE...]",
+          "description": "set one or more config vars",
+          "variadic_args": {
+            "name": "KEY=VALUE",
+            "min": 1,
+            "description": "key-value pairs to set"
+          }
+        },
+        "unset": {
+          "usage": "heroku config:unset KEY [KEY...]",
+          "description": "unset one or more config vars",
+          "variadic_args": {
+            "name": "KEY",
+            "min": 1
+          }
+        }
+      }
+    },
+    "certs": {
+      "description": "SSL certificate management",
+      "subcommands": {
+        "auto": {
+          "subcommands": {
+            "enable": {
+              "usage": "heroku certs:auto:enable",
+              "description": "enable ACM status for an app"
+            },
+            "disable": {
+              "usage": "heroku certs:auto:disable",
+              "description": "disable ACM for an app"
+            }
+          }
+        }
+      }
+    },
+    "logs": {
+      "usage": "heroku logs",
+      "description": "display recent log output",
+      "flags": [
+        {"long": "--tail", "short": "-t", "type": "bool", "description": "continually stream logs"},
+        {"long": "--num", "short": "-n", "type": "int", "default": 100, "description": "number of lines to display"},
+        {"long": "--source", "short": "-s", "type": "string", "description": "only show output from this source"},
+        {"long": "--dyno", "short": "-d", "type": "string", "description": "only show output from this dyno"},
+        {"long": "--force-colors", "type": "bool", "description": "force use of colors"}
+      ]
+    },
+    "addons": {
+      "description": "manage add-ons",
+      "subcommands": {
+        "create": {
+          "usage": "heroku addons:create SERVICE:PLAN",
+          "positional_args": [
+            {"name": "SERVICE:PLAN", "required": true, "description": "addon service and plan"}
+          ],
+          "flags": [
+            {"long": "--name", "type": "string", "description": "name for the add-on resource"},
+            {"long": "--as", "type": "string", "description": "name for the initial add-on attachment"},
+            {"long": "--confirm", "type": "string", "description": "confirm command"}
+          ]
+        },
+        "plans": {
+          "usage": "heroku addons:plans SERVICE",
+          "positional_args": [
+            {"name": "SERVICE", "required": true}
+          ],
+          "flags": [
+            {"long": "--json", "type": "bool"}
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,247 @@
+"""Unit tests for ComposableAgent command building and execution."""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from glyx_python_sdk import (
+    AgentConfig,
+    AgentResult,
+    ArgSpec,
+    ComposableAgent,
+)
+
+
+@pytest.fixture(autouse=True)
+def mock_broadcast_event():
+    """Auto-mock broadcast_event for all tests."""
+    with patch("glyx_python_sdk.composable_agents.broadcast_event", new_callable=AsyncMock):
+        yield
+
+
+def create_mock_process(
+    stdout_lines: list[bytes] | None = None, stderr_lines: list[bytes] | None = None, returncode: int = 0
+):
+    """Create a mock process with proper async stream mocking."""
+    stdout_lines = stdout_lines or []
+    stderr_lines = stderr_lines or []
+
+    mock_process = MagicMock()
+    mock_process.returncode = returncode
+    mock_process.wait = AsyncMock(return_value=returncode)
+
+    # Mock stdout.readline() to return lines then empty
+    stdout_iter = iter(stdout_lines + [b""])
+    mock_process.stdout = MagicMock()
+    mock_process.stdout.readline = AsyncMock(side_effect=lambda: next(stdout_iter, b""))
+
+    # Mock stderr.readline() to return lines then empty
+    stderr_iter = iter(stderr_lines + [b""])
+    mock_process.stderr = MagicMock()
+    mock_process.stderr.readline = AsyncMock(side_effect=lambda: next(stderr_iter, b""))
+
+    return mock_process
+
+
+class TestCommandBuilding:
+    """Tests for command building logic in ComposableAgent."""
+
+    @pytest.mark.asyncio
+    async def test_command_building_with_mixed_argument_types(self) -> None:
+        """Test command construction with flags, bools, and positional args."""
+
+        # Create a test config (mimics aider.json structure)
+        config = AgentConfig(
+            agent_key="test_agent",
+            command="test_cli",
+            args=[
+                ArgSpec(name="prompt", flag="--message", type="string", required=True),
+                ArgSpec(name="model", flag="--model", type="string", default="gpt-4"),
+                ArgSpec(name="files", flag="--file", type="string", required=True),
+                ArgSpec(name="no_git", flag="--no-git", type="bool", default="true"),
+                ArgSpec(name="yes_always", flag="--yes-always", type="bool", default="true"),
+            ],
+        )
+
+        agent = ComposableAgent(config)
+        mock_process = create_mock_process(stdout_lines=[b"success\n"])
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            task_config = {"prompt": "Add docstring", "files": "main.py", "model": "gpt-5.1"}  # Override default
+
+            result = await agent.execute(task_config, timeout=30)
+
+            # Verify the command structure
+            call_args = mock_exec.call_args[0]
+            assert call_args == (
+                "test_cli",
+                "--message",
+                "Add docstring",
+                "--model",
+                "gpt-5.1",
+                "--file",
+                "main.py",
+                "--no-git",
+                "--yes-always",
+            )
+
+            # Verify result structure
+            assert result.success is True
+            assert result.exit_code == 0
+            assert isinstance(result, AgentResult)
+
+    @pytest.mark.asyncio
+    async def test_command_building_without_optional_args(self) -> None:
+        """Test that optional args with None values are omitted."""
+        config = AgentConfig(
+            agent_key="test",
+            command="test_cli",
+            args=[
+                ArgSpec(name="prompt", flag="-p", type="string", required=True),
+                ArgSpec(name="optional", flag="--opt", type="string", default=""),
+            ],
+        )
+
+        agent = ComposableAgent(config)
+        mock_process = create_mock_process()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            result = await agent.execute({"prompt": "test"}, timeout=10)
+
+            call_args = mock_exec.call_args[0]
+            assert call_args == ("test_cli", "-p", "test")
+            assert "--opt" not in call_args
+            assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_command_building_with_positional_args(self) -> None:
+        """Test that args with empty flags are added as positional."""
+        config = AgentConfig(
+            agent_key="test",
+            command="test_cli",
+            args=[
+                ArgSpec(name="subcmd", flag="", type="string", default="run"),
+                ArgSpec(name="message", flag="-m", type="string", required=True),
+            ],
+        )
+
+        agent = ComposableAgent(config)
+        mock_process = create_mock_process()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            result = await agent.execute({"message": "hello"}, timeout=10)
+
+            call_args = mock_exec.call_args[0]
+            assert call_args[0] == "test_cli"
+            assert "run" in call_args  # Positional arg included
+            assert "-m" in call_args
+            assert "hello" in call_args
+            assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_command_building_with_default_values(self) -> None:
+        """Test that default values are used when not provided in task_config."""
+        config = AgentConfig(
+            agent_key="test",
+            command="test_cli",
+            args=[
+                ArgSpec(name="model", flag="--model", type="string", default="default-model"),
+                ArgSpec(name="timeout", flag="--timeout", type="string", default="30"),
+            ],
+        )
+
+        agent = ComposableAgent(config)
+        mock_process = create_mock_process()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            # Don't provide any config - should use defaults
+            result = await agent.execute({}, timeout=10)
+
+            call_args = mock_exec.call_args[0]
+            assert "--model" in call_args
+            assert "default-model" in call_args
+            assert "--timeout" in call_args
+            assert "30" in call_args
+            assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_command_building_bool_false_omitted(self) -> None:
+        """Test that boolean flags with False value are omitted."""
+        config = AgentConfig(
+            agent_key="test",
+            command="test_cli",
+            args=[
+                ArgSpec(name="verbose", flag="--verbose", type="bool", default=""),
+                ArgSpec(name="quiet", flag="--quiet", type="bool", default=""),
+            ],
+        )
+
+        agent = ComposableAgent(config)
+        mock_process = create_mock_process()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            result = await agent.execute({}, timeout=10)
+
+            call_args = mock_exec.call_args[0]
+            assert call_args == ("test_cli",)  # No boolean flags added
+            assert "--verbose" not in call_args
+            assert "--quiet" not in call_args
+            assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_command_building_bool_true_included(self) -> None:
+        """Test that boolean flags with True value are included without value."""
+        config = AgentConfig(
+            agent_key="test",
+            command="test_cli",
+            args=[
+                ArgSpec(name="verbose", flag="--verbose", type="bool", default=""),
+            ],
+        )
+
+        agent = ComposableAgent(config)
+        mock_process = create_mock_process()
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_process) as mock_exec:
+            result = await agent.execute({"verbose": True}, timeout=10)
+
+            call_args = mock_exec.call_args[0]
+            assert "--verbose" in call_args
+            # Make sure it's just the flag, no value after it
+            verbose_idx = call_args.index("--verbose")
+            assert verbose_idx == len(call_args) - 1  # It's the last item
+            assert result.success is True
+
+
+class TestAgentResult:
+    """Tests for AgentResult dataclass."""
+
+    def test_agent_result_success_property(self) -> None:
+        """Test that success property correctly evaluates exit code and timeout."""
+        # Success case
+        result = AgentResult(stdout="output", stderr="", exit_code=0, timed_out=False, execution_time=1.0)
+        assert result.success is True
+
+        # Failure - non-zero exit code
+        result = AgentResult(stdout="", stderr="error", exit_code=1, timed_out=False, execution_time=1.0)
+        assert result.success is False
+
+        # Failure - timed out
+        result = AgentResult(stdout="", stderr="", exit_code=0, timed_out=True, execution_time=30.0)
+        assert result.success is False
+
+    def test_agent_result_output_property(self) -> None:
+        """Test that output property combines stdout and stderr correctly."""
+        # Only stdout
+        result = AgentResult(stdout="hello world", stderr="", exit_code=0, timed_out=False, execution_time=1.0)
+        assert result.output == "hello world"
+
+        # Both stdout and stderr
+        result = AgentResult(stdout="hello", stderr="warning", exit_code=0, timed_out=False, execution_time=1.0)
+        assert result.output == "hello\nSTDERR: warning"
+
+        # Only stderr
+        result = AgentResult(stdout="", stderr="error occurred", exit_code=1, timed_out=False, execution_time=1.0)
+        assert result.output == "\nSTDERR: error occurred"

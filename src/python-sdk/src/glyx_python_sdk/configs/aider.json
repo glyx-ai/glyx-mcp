@@ -1,0 +1,43 @@
+{
+  "aider": {
+    "command": "aider",
+    "args": {
+      "message": {
+        "flag": "--message",
+        "type": "string",
+        "required": true,
+        "description": "The prompt or message to send to aider"
+      },
+      "model": {
+        "flag": "--model",
+        "type": "string",
+        "default": "",
+        "description": "Model to use (e.g., gpt-4, claude-3-opus)"
+      },
+      "files": {
+        "flag": "",
+        "type": "string",
+        "positional": true,
+        "description": "Files to edit"
+      },
+      "read": {
+        "flag": "--read",
+        "type": "string",
+        "description": "Files to read but not edit"
+      },
+      "yes": {
+        "flag": "--yes",
+        "type": "bool",
+        "default": "true",
+        "description": "Always say yes to prompts"
+      },
+      "no_git": {
+        "flag": "--no-git",
+        "type": "bool",
+        "default": "",
+        "description": "Disable git integration"
+      }
+    },
+    "description": "Aider AI pair programming CLI"
+  }
+}

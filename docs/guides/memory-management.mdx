@@ -1,0 +1,369 @@
+---
+title: 'Memory Management'
+description: 'Build a searchable knowledge base for your project with semantic memory'
+---
+
+## Overview
+
+Glyx MCP uses **Mem0** for semantic memory management, allowing you to store project knowledge, architectural decisions, and code patterns that can be retrieved via semantic search.
+
+## Why Use Memory?
+
+Memory helps AI agents:
+
+- Maintain context across sessions
+- Recall past decisions and patterns
+- Avoid repeating mistakes
+- Build on previous work
+- Learn project-specific conventions
+
+## Memory Categories
+
+Organize memories by category:
+
+| Category | Purpose | Examples |
+|----------|---------|----------|
+| `architecture` | System design decisions | "Using Redis for rate limiting", "Microservices pattern" |
+| `integrations` | API and service integrations | "Supabase Auth setup", "Stripe webhook config" |
+| `code_style_guidelines` | Coding conventions | "Use Pydantic for validation", "Prefer async/await" |
+| `project_id` | Project identity | "E-commerce platform for retail", "Internal tool" |
+| `observability` | Monitoring and logging | "Datadog integration", "Error tracking with Sentry" |
+| `product` | Product features | "Checkout flow UX", "User onboarding process" |
+| `key_concept` | Important concepts | "Event sourcing pattern", "CQRS architecture" |
+| `tasks` | Task tracking | "Implemented auth on 2024-12-01", "Bug fix in progress" |
+
+## Saving Memories
+
+### Via MCP Tool
+
+```python
+from glyx_python_sdk import save_memory
+
+save_memory(
+    content="Implemented JWT authentication with refresh tokens using Supabase Auth. Access tokens expire in 1 hour, refresh tokens in 30 days.",
+    agent_id="aider",
+    run_id="session-123",
+    category="architecture",
+    directory_name="glyx-mcp"
+)
+```
+
+### Via REST API
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST http://localhost:8000/api/memory/save \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content": "Using Redis for session storage with 24-hour TTL",
+    "agent_id": "orchestrator",
+    "run_id": "session-456",
+    "category": "architecture",
+    "directory_name": "glyx-mcp"
+  }'
+```
+
+```python Python
+import httpx
+
+response = await httpx.post(
+    "http://localhost:8000/api/memory/save",
+    json={
+        "content": "Using Redis for session storage with 24-hour TTL",
+        "agent_id": "orchestrator",
+        "run_id": "session-456",
+        "category": "architecture",
+        "directory_name": "glyx-mcp"
+    }
+)
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/memory/save', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    content: 'Using Redis for session storage with 24-hour TTL',
+    agent_id: 'orchestrator',
+    run_id: 'session-456',
+    category: 'architecture',
+    directory_name: 'glyx-mcp'
+  })
+});
+```
+
+</CodeGroup>
+
+## Searching Memories
+
+### Semantic Search
+
+Search by natural language query:
+
+```python
+from glyx_python_sdk import search_memory
+
+memories = search_memory(
+    query="How did we implement authentication?",
+    category="architecture",
+    limit=5
+)
+
+for memory in memories:
+    print(f"- {memory['memory']}")
+```
+
+### Via REST API
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST http://localhost:8000/api/memory/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "rate limiting implementation",
+    "category": "architecture",
+    "limit": 5
+  }'
+```
+
+```python Python
+response = await httpx.post(
+    "http://localhost:8000/api/memory/search",
+    json={
+        "query": "rate limiting implementation",
+        "category": "architecture",
+        "limit": 5
+    }
+)
+memories = response.json()["memories"]
+```
+
+</CodeGroup>
+
+## AI-Powered Memory Suggestions
+
+Use AI to analyze page content and suggest relevant memories:
+
+```javascript
+const response = await fetch('http://localhost:8000/api/memory/infer', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    page_content: documentContent,
+    page_title: 'Authentication Best Practices',
+    page_url: 'https://example.com/auth-guide',
+    user_context: 'Looking for JWT implementation patterns'
+  })
+});
+
+const { suggestions, analysis } = await response.json();
+
+console.log('Analysis:', analysis);
+suggestions.forEach(suggestion => {
+  console.log(`Category: ${suggestion.category}`);
+  console.log(`Content: ${suggestion.content}`);
+  console.log(`Reason: ${suggestion.reason}`);
+});
+```
+
+**Response:**
+
+```json
+{
+  "analysis": "This page discusses JWT authentication with refresh tokens and secure token storage",
+  "suggestions": [
+    {
+      "content": "JWT tokens should be stored in httpOnly cookies to prevent XSS attacks",
+      "category": "code_style_guidelines",
+      "reason": "Critical security pattern for token storage"
+    },
+    {
+      "content": "Refresh tokens should have longer expiry (30 days) than access tokens (1 hour)",
+      "category": "architecture",
+      "reason": "Important architectural decision for auth system"
+    }
+  ]
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Be specific and concise">
+    Good memories are specific and actionable:
+
+    **Good**: "Rate limiting uses Redis with 100 requests/minute per IP, configured in `config/rate_limit.py`"
+
+    **Bad**: "We use rate limiting"
+  </Accordion>
+
+  <Accordion title="Include context">
+    Add relevant context like file paths, dates, or reasoning:
+
+    ```python
+    save_memory(
+        content="Migration to Pydantic V2 completed on 2024-12-01. All models now use ConfigDict instead of Config class. See migration guide in docs/pydantic-v2-migration.md",
+        category="architecture"
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Use appropriate categories">
+    Choose categories that match the memory type:
+    - Technical decisions → `architecture`
+    - API integrations → `integrations`
+    - Code conventions → `code_style_guidelines`
+  </Accordion>
+
+  <Accordion title="Regular memory cleanup">
+    Periodically review and update outdated memories:
+
+    ```python
+    # Search for potentially outdated memories
+    old_memories = search_memory(
+        query="deprecated API",
+        limit=10
+    )
+
+    # Update or remove as needed
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Memory in Orchestration
+
+The orchestrator automatically uses memory for context:
+
+```python
+# Orchestrator searches memory before executing
+memories = search_memory(
+    query=task_description,
+    limit=5
+)
+
+# Includes relevant memories in agent prompts
+prompt = f"""
+Task: {task_description}
+
+Relevant context from memory:
+{format_memories(memories)}
+
+Please implement this task following established patterns.
+"""
+```
+
+## Browser Extension Integration
+
+The Glyx Chrome extension uses memory inference to suggest saving useful information:
+
+```javascript
+// When user highlights text
+const selectedText = window.getSelection().toString();
+
+// Get AI suggestions
+const suggestions = await inferMemories({
+  page_content: selectedText,
+  page_title: document.title,
+  page_url: window.location.href
+});
+
+// Show suggestions to user
+showMemorySuggestions(suggestions);
+```
+
+## Memory Analytics
+
+Track memory usage and effectiveness:
+
+```python
+from glyx_python_sdk import search_memory
+
+# Most relevant memories for current project
+memories = search_memory(
+    query="project architecture",
+    category="architecture",
+    limit=10
+)
+
+# Analyze memory distribution
+categories = {}
+for memory in memories:
+    category = memory.get('category', 'uncategorized')
+    categories[category] = categories.get(category, 0) + 1
+
+print("Memory distribution:", categories)
+```
+
+## Example Workflows
+
+### Code Review Memory
+
+```python
+# After code review
+save_memory(
+    content="Code review found SQL injection vulnerability in user search. Fixed by using parameterized queries in src/db/users.py:45",
+    agent_id="claude",
+    run_id="review-001",
+    category="code_style_guidelines"
+)
+
+# Future searches will find this
+memories = search_memory("SQL injection prevention")
+```
+
+### Architectural Decision Records
+
+```python
+# Document major decisions
+save_memory(
+    content="""
+    ADR-001: Using PostgreSQL for primary database
+
+    Context: Need reliable transactional database with JSON support
+    Decision: PostgreSQL 15 with pgvector extension
+    Consequences: +ACID compliance, +JSON columns, -NoSQL flexibility
+    Date: 2024-12-01
+    """,
+    category="architecture",
+    directory_name="glyx-mcp"
+)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Agent Orchestration"
+    icon="diagram-project"
+    href="/guides/agent-orchestration"
+  >
+    Use memory in orchestration
+  </Card>
+  <Card
+    title="Memory API"
+    icon="code"
+    href="/api-reference/POST/memory-search"
+  >
+    Full API documentation
+  </Card>
+  <Card
+    title="Smart Tasks"
+    icon="sparkles"
+    href="/api-reference/POST/tasks-smart"
+  >
+    AI-powered task creation
+  </Card>
+  <Card
+    title="Feature Pipelines"
+    icon="diagram-project"
+    href="/guides/feature-pipelines"
+  >
+    Multi-stage workflows
+  </Card>
+</CardGroup>

@@ -1,0 +1,62 @@
+{
+  "claude": {
+    "command": "claude",
+    "version": ">=1.0.0",
+    "args": {
+      "prompt": {
+        "flag": "-p",
+        "required": true,
+        "description": "The prompt to send to Claude",
+        "type": "string",
+        "default": ""
+      },
+      "model": {
+        "flag": "--model",
+        "required": false,
+        "description": "Model to use (aliases: opus, sonnet, haiku)",
+        "type": "string",
+        "default": "sonnet"
+      },
+      "max_turns": {
+        "flag": "--max-turns",
+        "required": false,
+        "description": "Maximum number of turns",
+        "type": "int",
+        "default": "30"
+      },
+      "working_dir": {
+        "flag": "--add-dir",
+        "required": false,
+        "description": "Add working directory (can be supplied multiple times or as a comma-separated list)",
+        "type": "string",
+        "default": ""
+      },
+      "disallowed_tools": {
+        "flag": "--disallowedTools",
+        "required": false,
+        "description": "Comma-separated list of disallowed tools",
+        "type": "string",
+        "default": "Bash(rm*),github:merge_*,github:delete_*,filesystem:move_*,github:push_*"
+      },
+      "allowed_tools": {
+        "flag": "--allowedTools",
+        "required": false,
+        "description": "Comma-separated list of allowed tools",
+        "type": "string",
+        "default": "Edit, filesystem:*"
+      }
+    },
+    "capabilities": [
+      "code_generation",
+      "reasoning",
+      "analysis",
+      "debugging"
+    ],
+    "examples": [
+      {
+        "task": "Write a Python factorial function",
+        "response": "def factorial(n): return 1 if n <= 1 else n * factorial(n-1)"
+      }
+    ]
+  }
+}

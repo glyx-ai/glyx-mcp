@@ -1,0 +1,109 @@
+{
+  "cli_name": "ngrok",
+  "description": "ngrok - secure introspectable tunnels to localhost",
+  "global_flags": [
+    {"long": "--config", "type": "string", "description": "path to config file", "env_var": "NGROK_CONFIG"},
+    {"long": "--authtoken", "type": "string", "description": "ngrok authtoken", "env_var": "NGROK_AUTHTOKEN"},
+    {"long": "--log", "type": "string", "description": "path to log file"},
+    {"long": "--log-format", "type": "string", "choices": ["term", "json", "logfmt"]},
+    {"long": "--log-level", "type": "string", "choices": ["debug", "info", "warn", "error", "crit"]}
+  ],
+  "commands": {
+    "http": {
+      "usage": "ngrok http [PORT] [flags]",
+      "description": "start an HTTP tunnel",
+      "positional_args": [
+        {"name": "PORT", "required": false, "type": "int", "default": 80}
+      ],
+      "flags": [
+        {"long": "--domain", "type": "string", "description": "domain to request for tunnel"},
+        {"long": "--hostname", "type": "string", "description": "hostname to request (deprecated, use --domain)"},
+        {"long": "--basic-auth", "type": "string", "description": "basic auth credentials", "repeatable": true},
+        {"long": "--oauth", "type": "string", "description": "OAuth provider", "choices": ["google", "github", "microsoft", "facebook"]},
+        {"long": "--header", "type": "string", "repeatable": true, "description": "HTTP headers to add"},
+        {"long": "--host-header", "type": "string", "description": "value of host header"},
+        {"long": "--inspect", "type": "bool", "default": true, "description": "enable request inspection"},
+        {"long": "--scheme", "type": "string", "choices": ["http", "https", "both"], "default": "https"},
+        {"long": "--circuit-breaker", "type": "float", "description": "error rate to trigger circuit breaker (0.0-1.0)"}
+      ],
+      "mutually_exclusive": [["--basic-auth", "--oauth"]]
+    },
+    "tcp": {
+      "usage": "ngrok tcp [PORT]",
+      "description": "start a TCP tunnel",
+      "positional_args": [
+        {"name": "PORT", "required": true, "type": "int"}
+      ],
+      "flags": [
+        {"long": "--remote-addr", "type": "string", "description": "reserved address to bind"},
+        {"long": "--cidr-allow", "type": "string", "repeatable": true, "description": "allowed CIDR ranges"},
+        {"long": "--cidr-deny", "type": "string", "repeatable": true, "description": "denied CIDR ranges"}
+      ]
+    },
+    "tls": {
+      "usage": "ngrok tls [PORT]",
+      "description": "start a TLS tunnel",
+      "positional_args": [
+        {"name": "PORT", "required": true, "type": "int"}
+      ],
+      "flags": [
+        {"long": "--domain", "type": "string"},
+        {"long": "--crt", "type": "string", "description": "path to TLS certificate"},
+        {"long": "--key", "type": "string", "description": "path to TLS key"},
+        {"long": "--terminate-at", "type": "string", "choices": ["edge", "upstream"]}
+      ]
+    },
+    "config": {
+      "description": "manage config file",
+      "subcommands": {
+        "add-authtoken": {
+          "usage": "ngrok config add-authtoken TOKEN",
+          "positional_args": [
+            {"name": "TOKEN", "required": true}
+          ]
+        },
+        "check": {
+          "usage": "ngrok config check",
+          "description": "check config file validity"
+        },
+        "edit": {
+          "usage": "ngrok config edit",
+          "description": "open config file in editor"
+        }
+      }
+    },
+    "service": {
+      "description": "run ngrok as a service",
+      "subcommands": {
+        "install": {
+          "usage": "ngrok service install [flags]",
+          "flags": [
+            {"long": "--config", "type": "string", "repeatable": true, "description": "config files to use"}
+          ]
+        },
+        "uninstall": {
+          "usage": "ngrok service uninstall"
+        },
+        "start": {
+          "usage": "ngrok service start"
+        },
+        "stop": {
+          "usage": "ngrok service stop"
+        }
+      }
+    },
+    "tunnel": {
+      "usage": "ngrok tunnel [NAME] [ADDR] [flags]",
+      "description": "start tunnel from config",
+      "positional_args": [
+        {"name": "NAME", "required": false, "description": "tunnel name from config"},
+        {"name": "ADDR", "required": false, "description": "address to tunnel"}
+      ],
+      "flags": [
+        {"long": "--label", "type": "string", "repeatable": true, "description": "labels for tunnel"},
+        {"long": "--crt", "type": "string"},
+        {"long": "--key", "type": "string"}
+      ]
+    }
+  }
+}

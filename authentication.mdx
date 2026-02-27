@@ -1,0 +1,221 @@
+---
+title: 'Authentication'
+description: 'Learn how to authenticate with Glyx MCP using Supabase Auth'
+---
+
+## Overview
+
+Glyx MCP uses **Supabase Auth** for user authentication and authorization. Most API endpoints require a valid JWT token in the Authorization header.
+
+## Authentication Flow
+
+<Steps>
+  <Step title="Sign Up">
+    Create a new user account:
+
+    ```bash
+    curl -X POST http://localhost:8000/api/auth/signup \
+      -H "Content-Type: application/json" \
+      -d '{
+        "email": "user@example.com",
+        "password": "securepassword123",
+        "metadata": {
+          "name": "John Doe"
+        }
+      }'
+    ```
+
+    **Response:**
+    ```json
+    {
+      "user_id": "uuid-here",
+      "email": "user@example.com",
+      "access_token": "eyJhbGc...",
+      "refresh_token": "refresh-token-here",
+      "expires_at": 1234567890
+    }
+    ```
+  </Step>
+
+  <Step title="Sign In">
+    Authenticate with existing credentials:
+
+    ```bash
+    curl -X POST http://localhost:8000/api/auth/signin \
+      -H "Content-Type: application/json" \
+      -d '{
+        "email": "user@example.com",
+        "password": "securepassword123"
+      }'
+    ```
+  </Step>
+
+  <Step title="Use Access Token">
+    Include the access token in subsequent requests:
+
+    ```bash
+    curl http://localhost:8000/api/organizations \
+      -H "Authorization: Bearer eyJhbGc..."
+    ```
+  </Step>
+</Steps>
+
+## Token Management
+
+### Access Tokens
+
+Access tokens are **JWT tokens** that expire after a set period (default: 1 hour). Include them in the `Authorization` header:
+
+```
+Authorization: Bearer <access_token>
+```
+
+### Refresh Tokens
+
+When your access token expires, use the refresh token to obtain a new one. Supabase handles this automatically in their client libraries.
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Store tokens securely">
+    - Never store tokens in localStorage (vulnerable to XSS)
+    - Use httpOnly cookies for web applications
+    - Store in secure storage on mobile devices
+    - Never commit tokens to version control
+  </Accordion>
+
+  <Accordion title="Token expiration">
+    - Access tokens expire in 1 hour by default
+    - Implement automatic token refresh logic
+    - Handle 401 errors gracefully
+    - Redirect to login on refresh token expiration
+  </Accordion>
+
+  <Accordion title="Use HTTPS in production">
+    - Always use HTTPS to prevent token interception
+    - The production server enforces HTTPS
+    - Local development can use HTTP
+  </Accordion>
+</AccordionGroup>
+
+## Getting Current User
+
+Retrieve the authenticated user's information:
+
+<CodeGroup>
+
+```bash cURL
+curl http://localhost:8000/api/auth/user \
+  -H "Authorization: Bearer <access_token>"
+```
+
+```python Python
+import httpx
+
+headers = {
+    "Authorization": f"Bearer {access_token}"
+}
+
+response = httpx.get(
+    "http://localhost:8000/api/auth/user",
+    headers=headers
+)
+user = response.json()
+print(user)
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/auth/user', {
+  headers: {
+    'Authorization': `Bearer ${accessToken}`
+  }
+});
+
+const user = await response.json();
+console.log(user);
+```
+
+</CodeGroup>
+
+## Sign Out
+
+Invalidate the current session:
+
+```bash
+curl -X POST http://localhost:8000/api/auth/signout \
+  -H "Authorization: Bearer <access_token>"
+```
+
+## Protected Endpoints
+
+The following endpoints require authentication:
+
+- `/api/organizations/*` - Organization management
+- `/api/tasks/*` - Task creation and management
+- `/api/deployments/*` - Deployment operations
+- `/api/memory/*` - Memory operations (save/search)
+
+## Public Endpoints
+
+These endpoints do not require authentication:
+
+- `/api/healthz` - Health check
+- `/api/health/detailed` - Detailed health status
+- `/api/metrics` - Service metrics
+- `/api/agents` - List available agents
+- `/docs` - API documentation
+
+## Error Handling
+
+### 401 Unauthorized
+
+```json
+{
+  "detail": "Missing or invalid Authorization header"
+}
+```
+
+**Solution**: Ensure you're including a valid Bearer token in the Authorization header.
+
+### 403 Forbidden
+
+```json
+{
+  "detail": "Insufficient permissions"
+}
+```
+
+**Solution**: The authenticated user doesn't have permission to access this resource.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api-reference/introduction"
+  >
+    Explore authenticated endpoints
+  </Card>
+  <Card
+    title="Organizations"
+    icon="building"
+    href="/api-reference/GET/organizations"
+  >
+    Manage organizations
+  </Card>
+  <Card
+    title="Tasks"
+    icon="list-check"
+    href="/api-reference/GET/tasks"
+  >
+    Create and manage tasks
+  </Card>
+  <Card
+    title="Memory"
+    icon="brain"
+    href="/guides/memory-management"
+  >
+    Use memory management features
+  </Card>
+</CardGroup>
