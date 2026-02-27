@@ -1,0 +1,35 @@
+# =============================================================================
+# Terraform Configuration - Glyx MCP Server
+# =============================================================================
+
+terraform {
+  required_version = ">= 1.5.0"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.27.0"  # Pinned - 5.28+ has Cloud Run v2 polling regression
+    }
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 3.0"
+    }
+  }
+
+  backend "gcs" {
+    bucket = "glyx-terraform-state"
+    prefix = "glyx-mcp"
+  }
+}
+
+provider "google" {
+  project = var.project_id
+  region  = var.region
+  # Uses Application Default Credentials (ADC)
+  # - Local: gcloud auth application-default login
+  # - CI: Workload Identity Federation
+}
+
+# NOTE: Required APIs (run, artifactregistry, secretmanager, cloudbuild, iamcredentials)
+# are managed outside Terraform. The GitHub Actions SA lacks serviceusage.services.list
+# permission, so we can't manage these from CI. They're already enabled and won't change.

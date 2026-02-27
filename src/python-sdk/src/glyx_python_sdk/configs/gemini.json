@@ -1,0 +1,41 @@
+{
+  "gemini": {
+    "command": "gemini",
+    "version": ">=1.0.0",
+    "args": {
+      "prompt": {
+        "flag": "-p",
+        "required": true,
+        "description": "The prompt to send to Gemini",
+        "type": "string",
+        "default": ""
+      },
+      "model": {
+        "flag": "--model",
+        "required": false,
+        "description": "Model to use",
+        "type": "string",
+        "default": "gemini-3-pro"
+      },
+      "working_dir": {
+        "flag": "--add-dir",
+        "required": false,
+        "description": "Add working directory (can be supplied multiple times or as a comma-separated list)",
+        "type": "string",
+        "default": ""
+      },
+      "sandbox": {
+        "flag": "--sandbox",
+        "required": false,
+        "description": "Enable sandboxing",
+        "type": "bool",
+        "default": "false"
+      }
+    },
+    "capabilities": [
+      "code_generation",
+      "analysis",
+      "reasoning"
+    ]
+  }
+}

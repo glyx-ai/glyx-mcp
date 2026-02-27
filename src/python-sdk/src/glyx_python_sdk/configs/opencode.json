@@ -1,0 +1,30 @@
+{
+  "opencode": {
+    "command": "opencode",
+    "args": {
+      "subcmd": {
+        "flag": "",
+        "type": "string",
+        "default": "run",
+        "description": "subcommand to run (run, serve, etc)"
+      },
+      "prompt": {
+        "flag": "",
+        "type": "string",
+        "default": "",
+        "description": "prompt or message positional argument"
+      },
+      "model": {
+        "flag": "--model",
+        "type": "string",
+        "default": ""
+      },
+      "provider": {
+        "flag": "--provider",
+        "type": "string",
+        "default": ""
+      }
+    },
+    "description": "OpenCode CLI integration"
+  }
+}

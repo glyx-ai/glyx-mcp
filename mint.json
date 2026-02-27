@@ -1,0 +1,181 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Glyx MCP",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0D9373",
+    "light": "#07C983",
+    "dark": "#0D9373",
+    "anchors": {
+      "from": "#0D9373",
+      "to": "#07C983"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:hakantelsiz@utexas.edu"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "GitHub",
+    "url": "https://github.com/htelsiz/glyx-mcp"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    },
+    {
+      "name": "Guides",
+      "url": "guides"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "Documentation",
+      "icon": "book-open-cover",
+      "url": "https://github.com/htelsiz/glyx-mcp/blob/main/docs"
+    },
+    {
+      "name": "Community",
+      "icon": "github",
+      "url": "https://github.com/htelsiz/glyx-mcp"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "authentication"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/agent-orchestration",
+        "guides/memory-management",
+        "guides/feature-pipelines",
+        "guides/webhooks"
+      ]
+    },
+    {
+      "group": "API Documentation",
+      "pages": [
+        "api-reference/introduction"
+      ]
+    },
+    {
+      "group": "Health & Monitoring",
+      "pages": [
+        "api-reference/GET/healthz",
+        "api-reference/GET/health-detailed",
+        "api-reference/GET/metrics"
+      ]
+    },
+    {
+      "group": "Streaming",
+      "pages": [
+        "api-reference/POST/stream-cursor"
+      ]
+    },
+    {
+      "group": "Agent Sequences",
+      "pages": [
+        "api-reference/GET/agent-sequences",
+        "api-reference/POST/agent-sequences",
+        "api-reference/GET/agent-sequences-id",
+        "api-reference/PATCH/agent-sequences-id",
+        "api-reference/DELETE/agent-sequences-id"
+      ]
+    },
+    {
+      "group": "Agent Workflows",
+      "pages": [
+        "api-reference/GET/agent-workflows",
+        "api-reference/POST/agent-workflows",
+        "api-reference/GET/agent-workflows-id",
+        "api-reference/PATCH/agent-workflows-id",
+        "api-reference/DELETE/agent-workflows-id",
+        "api-reference/POST/agent-workflows-execute"
+      ]
+    },
+    {
+      "group": "Organizations",
+      "pages": [
+        "api-reference/GET/organizations",
+        "api-reference/POST/organizations",
+        "api-reference/GET/organizations-id",
+        "api-reference/DELETE/organizations-id"
+      ]
+    },
+    {
+      "group": "Tasks",
+      "pages": [
+        "api-reference/GET/tasks",
+        "api-reference/POST/tasks",
+        "api-reference/GET/tasks-id",
+        "api-reference/PATCH/tasks-id",
+        "api-reference/DELETE/tasks-id",
+        "api-reference/POST/tasks-smart"
+      ]
+    },
+    {
+      "group": "Authentication",
+      "pages": [
+        "api-reference/POST/auth-signup",
+        "api-reference/POST/auth-signin",
+        "api-reference/POST/auth-signout",
+        "api-reference/GET/auth-user"
+      ]
+    },
+    {
+      "group": "Memory",
+      "pages": [
+        "api-reference/POST/memory-save",
+        "api-reference/POST/memory-search",
+        "api-reference/POST/memory-infer"
+      ]
+    },
+    {
+      "group": "Agents",
+      "pages": [
+        "api-reference/GET/agents"
+      ]
+    },
+    {
+      "group": "GitHub",
+      "pages": [
+        "api-reference/GET/github-repositories"
+      ]
+    },
+    {
+      "group": "Deployments",
+      "pages": [
+        "api-reference/GET/deployments",
+        "api-reference/GET/deployments-id",
+        "api-reference/PATCH/deployments-id",
+        "api-reference/DELETE/deployments-id"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/htelsiz/glyx-mcp"
+  },
+  "openapi": "docs/openapi.json",
+  "api": {
+    "baseUrl": "https://glyx-mcp.fly.dev",
+    "auth": {
+      "method": "bearer"
+    },
+    "playground": {
+      "mode": "show"
+    }
+  }
+}

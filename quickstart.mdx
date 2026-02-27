@@ -1,0 +1,193 @@
+---
+title: 'Quickstart'
+description: 'Get started with Glyx MCP in under 5 minutes'
+---
+
+## Installation
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/htelsiz/glyx-mcp.git
+    cd glyx-mcp
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Glyx MCP uses `uv` for dependency management:
+
+    ```bash
+    uv pip install -e ".[dev]"
+    ```
+  </Step>
+
+  <Step title="Set up environment variables">
+    Create a `.env` file with your API keys:
+
+    ```bash
+    # Required
+    SUPABASE_URL=your_supabase_url
+    SUPABASE_ANON_KEY=your_supabase_anon_key
+    OPENAI_API_KEY=your_openai_key
+    ANTHROPIC_API_KEY=your_anthropic_key
+    OPENROUTER_API_KEY=your_openrouter_key
+    MEM0_API_KEY=your_mem0_key
+
+    # Optional (for tracing)
+    LANGFUSE_PUBLIC_KEY=your_langfuse_public_key
+    LANGFUSE_SECRET_KEY=your_langfuse_secret_key
+    LANGFUSE_HOST=https://cloud.langfuse.com
+    ```
+  </Step>
+
+  <Step title="Start the server">
+    Run the combined MCP + REST API server:
+
+    ```bash
+    uv run python server.py
+    # or
+    python -m glyx.mcp.server
+    ```
+
+    The server will start on `http://localhost:8000`
+  </Step>
+</Steps>
+
+## Using the MCP Server
+
+### With Claude Code
+
+Add to your `.mcp.json` configuration:
+
+```json
+{
+  "mcpServers": {
+    "glyx-ai": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/path/to/glyx-mcp",
+        "fastmcp",
+        "run",
+        "src/glyx/mcp/server.py"
+      ],
+      "env": {
+        "OPENAI_API_KEY": "...",
+        "ANTHROPIC_API_KEY": "...",
+        "OPENROUTER_API_KEY": "..."
+      }
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+Once connected, you'll have access to:
+
+- `orchestrate`: Coordinate multiple AI agents for complex tasks
+- `search_memory`: Semantic search across project knowledge
+- `save_memory`: Store project decisions and patterns
+- `ask_user`: Interactive user prompts
+- Agent tools: `use_aider`, `use_claude`, `use_cursor`, etc.
+
+## Making Your First API Request
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST http://localhost:8000/api/tasks/smart \
+  -H "Content-Type: application/json" \
+  -d '{
+    "selected_text": "Implement JWT authentication with refresh tokens",
+    "page_title": "Security Best Practices"
+  }'
+```
+
+```python Python
+import httpx
+
+response = httpx.post(
+    "http://localhost:8000/api/tasks/smart",
+    json={
+        "selected_text": "Implement JWT authentication with refresh tokens",
+        "page_title": "Security Best Practices"
+    }
+)
+print(response.json())
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/tasks/smart', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    selected_text: 'Implement JWT authentication with refresh tokens',
+    page_title: 'Security Best Practices'
+  })
+});
+
+const data = await response.json();
+console.log(data);
+```
+
+</CodeGroup>
+
+## Streaming Execution
+
+Stream real-time updates from agent execution:
+
+```javascript
+const eventSource = new EventSource('/stream/cursor', {
+  method: 'POST',
+  body: JSON.stringify({
+    task: {
+      id: 'task-123',
+      title: 'Implement authentication',
+      description: 'Add JWT-based auth'
+    },
+    organization_id: 'org-uuid'
+  })
+});
+
+eventSource.onmessage = (e) => {
+  const data = JSON.parse(e.data);
+  console.log(data.type, data.content);
+};
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Agent Orchestration"
+    icon="diagram-project"
+    href="/guides/agent-orchestration"
+  >
+    Learn how to coordinate multiple agents
+  </Card>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="/api-reference/introduction"
+  >
+    Explore all available endpoints
+  </Card>
+  <Card
+    title="Memory Management"
+    icon="brain"
+    href="/guides/memory-management"
+  >
+    Build a knowledge base for your project
+  </Card>
+  <Card
+    title="Authentication"
+    icon="shield"
+    href="/authentication"
+  >
+    Secure your API with Supabase Auth
+  </Card>
+</CardGroup>

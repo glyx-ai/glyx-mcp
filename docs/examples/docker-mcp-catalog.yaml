@@ -1,0 +1,28 @@
+registry:
+  glyx-mcp:
+    description: "Glyx MCP - Composable AI agent wrappers with Aider, OpenCode, Grok, and memory"
+    title: "Glyx MCP"
+    type: "server"
+    image: "glyx-mcp:latest"
+    stdin: true
+    tty: true
+    volumes:
+      - "${PROJECT_DIR:-.}:/workspace"
+      - "./src:/app/src"
+      - "./logs:/app/logs"
+    env_file:
+      - .env
+    working_dir: "/app"
+    tools:
+      - name: "use_aider"
+        description: "AI pair programmer for code editing"
+      - name: "use_grok"
+        description: "Fast reasoning and analysis"
+      - name: "use_opencode"
+        description: "General-purpose OpenCode CLI"
+      - name: "orchestrate"
+        description: "Multi-agent task orchestration"
+      - name: "search_memory"
+        description: "Search project memory"
+      - name: "save_memory"
+        description: "Save to project memory"

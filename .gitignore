@@ -1,0 +1,57 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+venv/
+env/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# MCP configuration (may contain sensitive data)
+.mcp.json
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checking
+.mypy_cache/
+.pytype/
+
+# Ruff cache
+.ruff_cache/
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+.sessions.db
+
+# Scratch/test files (shouldn't be committed)
+hello_world.py
+add_function.py
+test_add_function.py
+print_success.py
+hello.md
+
+# Setup scripts and docs
+.github/gemini-cli-setup.md
+setup_workload_identity.sh
