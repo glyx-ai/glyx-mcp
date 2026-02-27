@@ -2,31 +2,10 @@
 
 from __future__ import annotations
 
-import secrets
-import socket
-from typing import Any
-
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
 router = APIRouter(tags=["Pairing"])
-
-
-def get_local_ip() -> str:
-    """Get the local IP address of this machine."""
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return "localhost"
-
-
-def get_hostname() -> str:
-    """Get the hostname of this machine."""
-    return socket.gethostname()
 
 
 @router.get("/pair", response_class=PlainTextResponse, summary="Get pairing script")
@@ -49,129 +28,77 @@ PAIR_SCRIPT = r'''#!/bin/bash
 # Glyx Device Pairing Script
 # Usage: curl -sL glyx.ai/pair | bash
 #
-# This script:
-# 1. Clones/updates glyx-mcp repo
-# 2. Generates a unique device ID
-# 3. Starts the unified FastAPI/FastMCP server with Rich logs
-# 4. Displays a QR code for the Glyx iOS app to scan
-
+# Bash handles the noisy bootstrap (uv, git, deps) silently,
+# then hands off to a Rich-powered Python script for all display.
 set -e
 
-# Config
+# ── Colors (only for the bootstrap phase) ───────────────────
+P='\033[1;35m'; G='\033[1;32m'; D='\033[2m'; R='\033[0m'
+SPIN=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+_pid=""
+
+spin() {
+    printf '\033[?25l'
+    ( i=0; while :; do
+        printf "\r  ${P}${SPIN[$((i%10))]}${R}  %s" "$1"
+        sleep 0.08; i=$((i+1))
+    done ) & _pid=$!
+}
+ok() {
+    kill "$_pid" 2>/dev/null
+    wait "$_pid" 2>/dev/null || true
+    printf "\r  ${G}✓${R}  %s\n" "$1"
+    printf '\033[?25h'
+}
+ok_skip() { printf "  ${G}✓${R}  %s\n" "$1"; }
+
+# ── Config ──────────────────────────────────────────────────
 GLYX_DIR="$HOME/.glyx"
 REPO_DIR="$GLYX_DIR/glyx-mcp"
-DEVICE_ID_FILE="$GLYX_DIR/device_id"
 REPO_URL="https://github.com/glyx-ai/glyx-mcp.git"
-
-# Create config directory
 mkdir -p "$GLYX_DIR"
 
-# Cleanup function
-cleanup() {
-    echo ""
-    echo "Shutting down..."
-    # Kill background server if running
-    jobs -p | xargs -r kill 2>/dev/null || true
-    exit 0
-}
+cleanup() { printf '\033[?25h'; jobs -p 2>/dev/null | xargs kill 2>/dev/null||true; exit 0; }
 trap cleanup INT TERM
 
-# Check for uv
-if ! command -v uv &>/dev/null; then
-    echo "Installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
-fi
-
-# Clone or update repo
-if [[ -d "$REPO_DIR/.git" ]]; then
-    echo "Updating glyx-mcp..."
-    cd "$REPO_DIR"
-    git pull --quiet
-else
-    echo "Cloning glyx-mcp..."
-    git clone --quiet "$REPO_URL" "$REPO_DIR"
-    cd "$REPO_DIR"
-fi
-
-# Get or create device ID
-if [[ -f "$DEVICE_ID_FILE" ]]; then
-    DEVICE_ID=$(cat "$DEVICE_ID_FILE")
-else
-    DEVICE_ID=$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())")
-    DEVICE_ID=$(echo "$DEVICE_ID" | tr '[:upper:]' '[:lower:]')
-    echo "$DEVICE_ID" > "$DEVICE_ID_FILE"
-fi
-
-# Get hostname
-HOSTNAME=$(hostname -s)
-USER=$(whoami)
-
-# Detect installed agents
-AGENTS=""
-command -v claude &>/dev/null && AGENTS="${AGENTS}claude,"
-command -v cursor &>/dev/null && AGENTS="${AGENTS}cursor,"
-command -v codex &>/dev/null && AGENTS="${AGENTS}codex,"
-command -v aider &>/dev/null && AGENTS="${AGENTS}aider,"
-AGENTS="${AGENTS%,}"
-
-# Detect local IP for token provisioning
-LOCAL_IP=$(python3 -c "
-import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-s.connect(('8.8.8.8', 80))
-print(s.getsockname()[0])
-s.close()
-" 2>/dev/null || echo "localhost")
-SERVER_PORT=8000
-
-# Build QR payload
-QR_PAYLOAD="glyx://pair?device_id=${DEVICE_ID}&host=${HOSTNAME}&user=${USER}&name=${HOSTNAME}&ip=${LOCAL_IP}&server_port=${SERVER_PORT}"
-[[ -n "$AGENTS" ]] && QR_PAYLOAD="${QR_PAYLOAD}&agents=${AGENTS}"
-
-# Show QR code
+# ── Bootstrap header ────────────────────────────────────────
 clear
-echo ""
-echo "   ██████╗ ██╗  ██╗   ██╗██╗  ██╗"
-echo "  ██╔════╝ ██║  ╚██╗ ██╔╝╚██╗██╔╝"
-echo "  ██║  ███╗██║   ╚████╔╝  ╚███╔╝ "
-echo "  ██║   ██║██║    ╚██╔╝   ██╔██╗ "
-echo "  ╚██████╔╝██████╗ ██║   ██╔╝ ██╗"
-echo "   ╚═════╝ ╚═════╝ ╚═╝   ╚═╝  ╚═╝"
-echo ""
-echo "        Scan with the Glyx iOS app"
-echo ""
+printf "\n"
+printf "  ${P}   ██████╗ ██╗  ██╗   ██╗██╗  ██╗${R}\n"
+printf "  ${P}  ██╔════╝ ██║  ╚██╗ ██╔╝╚██╗██╔╝${R}\n"
+printf "  ${P}  ██║  ███╗██║   ╚████╔╝  ╚███╔╝ ${R}\n"
+printf "  ${P}  ██║   ██║██║    ╚██╔╝   ██╔██╗ ${R}\n"
+printf "  ${P}  ╚██████╔╝██████╗ ██║   ██╔╝ ██╗${R}\n"
+printf "  ${P}   ╚═════╝ ╚═════╝ ╚═╝   ╚═╝  ╚═╝${R}\n"
+printf "\n  ${D}Setting up your machine...${R}\n\n"
 
-if command -v qrencode &>/dev/null; then
-    qrencode -t ANSIUTF8 "$QR_PAYLOAD"
-elif python3 -c "import qrcode" 2>/dev/null; then
-    python3 -c "import qrcode; qr = qrcode.QRCode(border=1); qr.add_data('$QR_PAYLOAD'); qr.print_ascii(invert=True)"
+# ── Step 1: uv ──────────────────────────────────────────────
+if ! command -v uv &>/dev/null; then
+    spin "Installing uv"
+    curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
+    export PATH="$HOME/.local/bin:$PATH"
+    ok "Installed uv"
 else
-    echo "Manual entry: $QR_PAYLOAD"
-    echo "(Install qrencode for QR code: brew install qrencode)"
+    ok_skip "uv"
 fi
 
-echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "Device: $HOSTNAME ($USER)"
-echo "ID: $DEVICE_ID"
-[[ -n "$AGENTS" ]] && echo "Agents: $AGENTS"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo ""
-echo "Starting server..."
-echo ""
+# ── Step 2: Repository ──────────────────────────────────────
+if [[ -d "$REPO_DIR/.git" ]]; then
+    spin "Updating glyx"
+    cd "$REPO_DIR" && git pull --quiet >/dev/null 2>&1
+    ok "Updated glyx"
+else
+    spin "Downloading glyx"
+    git clone --quiet "$REPO_URL" "$REPO_DIR" >/dev/null 2>&1
+    ok "Downloaded glyx"
+fi
 
-# Sync dependencies and start server
+# ── Step 3: Dependencies ────────────────────────────────────
+spin "Installing dependencies"
 cd "$REPO_DIR"
-uv sync --extra dev
+uv sync >/dev/null 2>&1
+ok "Dependencies ready"
 
-# Source credentials if available
-GLYX_ENV="$GLYX_DIR/env"
-if [[ -f "$GLYX_ENV" ]]; then
-    set -a
-    source "$GLYX_ENV"
-    set +a
-fi
-
-GLYX_DEVICE_ID="$DEVICE_ID" exec uv run task dev
+# ── Hand off to Rich ────────────────────────────────────────
+exec uv run python3 scripts/pair_display.py
 '''
