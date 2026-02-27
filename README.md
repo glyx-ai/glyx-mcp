@@ -57,7 +57,7 @@ Setup runs silently with animated spinners, then presents a [Rich](https://githu
   │                                             │
   ╰────── Point your camera at this code ───────╯
 
-  Device   MacBook-Pro (you)
+  Device   dev-machine (you)
   IP       192.168.1.5:8000
   Agents   claude  cursor  codex  aider
 ```
@@ -71,18 +71,28 @@ QR codes rendered with [segno](https://github.com/heuer/segno) in compact unicod
 ## How it works
 
 ```mermaid
-graph LR
-    A["📱 iPhone"] -- dispatch task --> B[("☁️ Supabase")]
-    B -- realtime --> C["💻 Your Mac"]
-    C -- run --> D["🤖 Agent"]
-    D -. stream output .-> C
-    C -. update .-> B
-    B -. push notification .-> A
+flowchart LR
+    phone(["Glyx iOS"])
+    db[("Supabase")]
+    exec["Local Executor"]
+    agent{{"Coding Agent"}}
 
-    style A fill:#7C3AED,stroke:#5B21B6,color:#fff
-    style B fill:#3ECF8E,stroke:#22c55e,color:#fff
-    style C fill:#06B6D4,stroke:#0891b2,color:#fff
-    style D fill:#F59E0B,stroke:#d97706,color:#fff
+    phone -->|dispatch task| db
+    db -->|realtime| exec
+    exec -->|run| agent
+    agent -.->|stream output| exec
+    exec -.->|update| db
+    db -.->|push notification| phone
+
+    classDef purple fill:#7C3AED,stroke:#5B21B6,color:#fff
+    classDef green fill:#3ECF8E,stroke:#22c55e,color:#fff
+    classDef cyan fill:#06B6D4,stroke:#0891b2,color:#fff
+    classDef amber fill:#F59E0B,stroke:#d97706,color:#fff
+
+    class phone purple
+    class db green
+    class exec cyan
+    class agent amber
 ```
 
 1. Dispatch a task from the Glyx iOS app
@@ -189,11 +199,11 @@ Push to `main` auto-deploys to Google Cloud Run via GitHub Actions + [Terraform]
 
 ## Ecosystem
 
-| | Repo | Stack |
-|-|------|-------|
-| 📱 | [**glyx-ios**](https://github.com/glyx-ai/glyx-ios) | Swift · SwiftUI · iOS 17+ |
-| ☁️ | **glyx-mcp** *(you are here)* | Python · FastAPI · Supabase |
-| 🌐 | [**glyx**](https://github.com/glyx-ai/glyx) | Next.js · [glyx.ai](https://glyx.ai) |
+| Repo | Stack |
+|------|-------|
+| [**glyx-ios**](https://github.com/glyx-ai/glyx-ios) | Swift · SwiftUI · iOS 17+ |
+| **glyx-mcp** *(you are here)* | Python · FastAPI · Supabase |
+| [**glyx**](https://github.com/glyx-ai/glyx) | Next.js · [glyx.ai](https://glyx.ai) |
 
 <br/>
 
