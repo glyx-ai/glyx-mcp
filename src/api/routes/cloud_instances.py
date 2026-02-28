@@ -196,10 +196,7 @@ async def teardown_instance(authorization: str | None = Header(None)) -> Teardow
     except Exception as e:
         logger.warning(f"[CLOUD] Teardown warning for user {user_id[:8]}: {e}")
 
-    # Mark as deleted
-    supabase.table("cloud_instances").update({
-        "status": InstanceStatus.DELETED,
-        "updated_at": datetime.now(UTC).isoformat(),
-    }).eq("id", result.data[0]["id"]).execute()
+    # Hard-delete row (unique constraint on user_id requires actual deletion)
+    supabase.table("cloud_instances").delete().eq("id", result.data[0]["id"]).execute()
 
     return TeardownResponse(status="deleted")
