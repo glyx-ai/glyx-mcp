@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 IMAGE = "us-central1-docker.pkg.dev/cs-poc-fu4tioc8i2w4ev3epp69dm3/glyx/glyx-cloud:latest"
 REGION = "us-central1"
 PROJECT = "cs-poc-fu4tioc8i2w4ev3epp69dm3"
+SERVICE_ACCOUNT = f"glyx-mcp-sa@{PROJECT}.iam.gserviceaccount.com"
 
 
 def _service_name(user_id: str) -> str:
@@ -31,6 +32,7 @@ async def deploy(user_id: str) -> tuple[str, str]:
 
     service = run_v2.Service(
         template=run_v2.RevisionTemplate(
+            service_account=SERVICE_ACCOUNT,
             containers=[
                 run_v2.Container(
                     image=IMAGE,
