@@ -18,7 +18,7 @@ import os
 import time
 from typing import Any
 
-from glyx_python_sdk.agent_types import AgentKey
+from glyx_python_sdk.agent_types import AGENT_KEY_MAP
 from glyx_python_sdk.composable_agents import ComposableAgent
 from glyx_python_sdk.settings import settings
 from knockapi import Knock
@@ -40,17 +40,6 @@ logger = logging.getLogger(__name__)
 
 # Signalled by POST /api/auth/provision to wake the provision watcher
 _provision_event: asyncio.Event | None = None
-
-AGENT_KEY_MAP: dict[str, AgentKey] = {
-    "claude": AgentKey.CLAUDE,
-    "claude-code": AgentKey.CLAUDE,
-    "cursor": AgentKey.CURSOR,
-    "codex": AgentKey.CODEX,
-    "aider": AgentKey.AIDER,
-    "gemini": AgentKey.GEMINI,
-    "opencode": AgentKey.OPENCODE,
-    "grok": AgentKey.GROK,
-}
 
 
 # ---------------------------------------------------------------------------

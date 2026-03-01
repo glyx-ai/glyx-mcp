@@ -32,25 +32,12 @@ from glyx_mcp.logging import configure_logging, get_logger
 configure_logging()
 
 import httpx
-from glyx_python_sdk.settings import settings
+from glyx_python_sdk.agent_types import AGENT_KEY_MAP
 from glyx_python_sdk.composable_agents import ComposableAgent
-from glyx_python_sdk.agent_types import AgentKey
+from glyx_python_sdk.settings import settings
+from supabase import Client, create_client
 from supabase._async.client import AsyncClient
 from supabase._async.client import create_client as create_async_client
-
-from supabase import Client, create_client
-
-# Map agent_type strings from database to AgentKey enum
-AGENT_KEY_MAP: dict[str, AgentKey] = {
-    "claude": AgentKey.CLAUDE,
-    "claude-code": AgentKey.CLAUDE,
-    "cursor": AgentKey.CURSOR,
-    "codex": AgentKey.CODEX,
-    "aider": AgentKey.AIDER,
-    "gemini": AgentKey.GEMINI,
-    "opencode": AgentKey.OPENCODE,
-    "grok": AgentKey.GROK,
-}
 
 logger = get_logger("glyx-executor")
 
