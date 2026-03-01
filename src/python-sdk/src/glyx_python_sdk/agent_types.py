@@ -23,6 +23,20 @@ class AgentKey(str, Enum):
     KIMI_K2 = "kimi_k2"
 
 
+# Canonical mapping from agent_type strings (as stored in agent_tasks) to AgentKey.
+# Shared by LocalExecutor, CloudExecutor, and any future executor.
+AGENT_KEY_MAP: dict[str, AgentKey] = {
+    "claude": AgentKey.CLAUDE,
+    "claude-code": AgentKey.CLAUDE,
+    "cursor": AgentKey.CURSOR,
+    "codex": AgentKey.CODEX,
+    "aider": AgentKey.AIDER,
+    "gemini": AgentKey.GEMINI,
+    "opencode": AgentKey.OPENCODE,
+    "grok": AgentKey.GROK,
+}
+
+
 @dataclass
 class AgentResult:
     """Structured result from agent execution."""

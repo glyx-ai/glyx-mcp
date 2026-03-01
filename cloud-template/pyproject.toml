@@ -1,6 +1,6 @@
 [project]
 name = "glyx-cloud"
 version = "0.1.0"
-description = "Per-user Glyx Cloud MCP server"
+description = "Per-user Glyx Cloud MCP server with agent execution"
 requires-python = ">=3.12"
-dependencies = ["fastmcp>=2.0", "supabase>=2.0"]
+dependencies = ["fastmcp>=2.0", "supabase>=2.0", "uvicorn>=0.30.0", "starlette>=0.38.0"]

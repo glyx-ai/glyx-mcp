@@ -50,6 +50,10 @@ class ProvisionResponse(BaseModel):
     instance: CloudInstanceResponse
 
 
+class ProvisionRequest(BaseModel):
+    claude_code_token: str | None = None
+
+
 class TeardownResponse(BaseModel):
     status: str
 
@@ -84,11 +88,15 @@ def _extract_user_id(authorization: str | None) -> str:
     summary="Provision Cloud Instance",
     response_model=ProvisionResponse,
 )
-async def provision_instance(authorization: str | None = Header(None)) -> ProvisionResponse:
+async def provision_instance(
+    body: ProvisionRequest | None = None,
+    authorization: str | None = Header(None),
+) -> ProvisionResponse:
     """Provision a personal cloud MCP server for the current user.
 
     Creates a Cloud Run service with the user's ID baked in as OWNER_USER_ID.
     Only one instance per user is allowed.
+    Optionally accepts a Claude Code OAuth token for agent execution.
     """
     user_id = _extract_user_id(authorization)
     supabase = _get_supabase()
@@ -122,7 +130,10 @@ async def provision_instance(authorization: str | None = Header(None)) -> Provis
 
     # Deploy Cloud Run service
     try:
-        service_name, endpoint = await deploy(user_id)
+        service_name, endpoint = await deploy(
+            user_id,
+            claude_code_token=body.claude_code_token if body else None,
+        )
 
         updated = supabase.table("cloud_instances").update({
             "service_name": service_name,

@@ -21,14 +21,24 @@ def _service_name(user_id: str) -> str:
     return f"glyx-user-{user_id[:8]}"
 
 
-async def deploy(user_id: str) -> tuple[str, str]:
+async def deploy(user_id: str, claude_code_token: str | None = None) -> tuple[str, str]:
     """Deploy a per-user Cloud Run service.
 
     Returns (service_name, endpoint_url).
+    Optionally injects CLAUDE_CODE_OAUTH_TOKEN for agent execution.
     """
     client = run_v2.ServicesAsyncClient()
     svc_name = _service_name(user_id)
     parent = f"projects/{PROJECT}/locations/{REGION}"
+
+    env_vars = [
+        run_v2.EnvVar(name="OWNER_USER_ID", value=user_id),
+        run_v2.EnvVar(name="SUPABASE_URL", value=settings.supabase_url),
+        run_v2.EnvVar(name="SUPABASE_ANON_KEY", value=settings.supabase_anon_key),
+        run_v2.EnvVar(name="SUPABASE_SERVICE_ROLE_KEY", value=settings.supabase_service_role_key),
+    ]
+    if claude_code_token:
+        env_vars.append(run_v2.EnvVar(name="CLAUDE_CODE_OAUTH_TOKEN", value=claude_code_token))
 
     service = run_v2.Service(
         template=run_v2.RevisionTemplate(
@@ -37,11 +47,7 @@ async def deploy(user_id: str) -> tuple[str, str]:
                 run_v2.Container(
                     image=IMAGE,
                     ports=[run_v2.ContainerPort(container_port=8080)],
-                    env=[
-                        run_v2.EnvVar(name="OWNER_USER_ID", value=user_id),
-                        run_v2.EnvVar(name="SUPABASE_URL", value=settings.supabase_url),
-                        run_v2.EnvVar(name="SUPABASE_ANON_KEY", value=settings.supabase_anon_key),
-                    ],
+                    env=env_vars,
                     resources=run_v2.ResourceRequirements(
                         limits={"memory": "512Mi", "cpu": "1"},
                     ),
