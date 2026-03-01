@@ -128,11 +128,25 @@ async def provision_instance(
 
     instance_id = row.data[0]["id"]
 
+    # Resolve Claude Code token: request body → user_integrations fallback
+    claude_code_token = body.claude_code_token if body else None
+    if not claude_code_token:
+        integrations = (
+            supabase.table("user_integrations")
+            .select("access_token")
+            .eq("user_id", user_id)
+            .eq("provider", "claude_code")
+            .limit(1)
+            .execute()
+        )
+        if integrations.data:
+            claude_code_token = integrations.data[0].get("access_token")
+
     # Deploy Cloud Run service
     try:
         service_name, endpoint = await deploy(
             user_id,
-            claude_code_token=body.claude_code_token if body else None,
+            claude_code_token=claude_code_token,
         )
 
         updated = supabase.table("cloud_instances").update({
