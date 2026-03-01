@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import platform
 import shutil
 import socket
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -58,6 +60,83 @@ def detect_agents() -> list[str]:
     return [a for a in ("claude", "cursor", "codex", "aider") if shutil.which(a)]
 
 
+CLAUDE_CREDS_PATH = Path.home() / ".claude" / ".credentials.json"
+
+
+def read_claude_code_token() -> str | None:
+    """Read the Claude Code OAuth token from ~/.claude/.credentials.json."""
+    if not CLAUDE_CREDS_PATH.exists():
+        return None
+    try:
+        data = json.loads(CLAUDE_CREDS_PATH.read_text())
+        oauth = data.get("claudeAiOauth", {})
+        return oauth.get("accessToken") or None
+    except Exception:
+        return None
+
+
+def ensure_claude_code_auth() -> bool:
+    """Ensure user is authenticated with Claude Code.
+
+    If `claude` is installed but no token exists, run `claude auth login`
+    interactively so the user can authenticate via browser. Returns True
+    if a valid token is available after this step.
+    """
+    # Not installed — nothing we can do
+    if not shutil.which("claude"):
+        return False
+
+    # Already authenticated
+    if read_claude_code_token():
+        return True
+
+    # Offer interactive login
+    console.print()
+    console.print(
+        f"  [{ACCENT}]Claude Code[/] detected but not authenticated.",
+        highlight=False,
+    )
+    console.print(
+        f"  [{DIM}]Sign in to enable Cloud Agent — run agents from anywhere.[/]",
+        highlight=False,
+    )
+    console.print()
+
+    try:
+        answer = console.input(f"  [{BRAND}]Run `claude auth login` now?[/] [Y/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+    if answer and answer not in ("y", "yes"):
+        return False
+
+    console.print()
+    console.print(f"  [{DIM}]Opening browser for authentication...[/]")
+    console.print()
+
+    try:
+        result = subprocess.run(
+            ["claude", "auth", "login"],
+            timeout=120,
+        )
+        if result.returncode != 0:
+            console.print(f"  [{DIM}]Authentication failed — skipping cloud setup.[/]")
+            return False
+    except subprocess.TimeoutExpired:
+        console.print(f"  [{DIM}]Authentication timed out — skipping cloud setup.[/]")
+        return False
+    except Exception:
+        return False
+
+    # Verify token was created
+    if read_claude_code_token():
+        console.print(f"  [bold {ACCENT}]✓[/] Claude Code authenticated")
+        return True
+
+    console.print(f"  [{DIM}]No token found after login — skipping cloud setup.[/]")
+    return False
+
+
 def build_qr_payload(env: dict[str, str | int | list[str]]) -> str:
     payload = (
         f"glyx://pair?"
@@ -70,6 +149,8 @@ def build_qr_payload(env: dict[str, str | int | list[str]]) -> str:
     )
     if env["agents"]:
         payload += f"&agents={','.join(env['agents'])}"
+    if env.get("has_claude_token"):
+        payload += "&has_claude_token=1"
     return payload
 
 
@@ -111,6 +192,8 @@ def info_panel(env: dict[str, str | int | list[str]]) -> Panel:
     if env["agents"]:
         agent_str = "  ".join(f"[{ACCENT}]{a}[/]" for a in env["agents"])
         lines.append(f"  [{DIM}]Agents[/]   {agent_str}")
+    if env.get("has_claude_token"):
+        lines.append(f"  [{DIM}]Cloud[/]    [{ACCENT}]Claude Code token ready[/]")
 
     return Panel(
         "\n".join(lines),
@@ -124,13 +207,21 @@ def info_panel(env: dict[str, str | int | list[str]]) -> Panel:
 
 def main() -> None:
     # Detect environment (fast -- no spinner needed)
+    agents = detect_agents()
+    has_claude_token = bool(read_claude_code_token())
+
+    # If Claude Code is installed but not authenticated, offer interactive login
+    if not has_claude_token and "claude" in agents:
+        has_claude_token = ensure_claude_code_auth()
+
     env = {
         "device_id": get_or_create_device_id(),
         "hostname": platform.node().split(".")[0],
         "username": os.getenv("USER", "unknown"),
-        "agents": detect_agents(),
+        "agents": agents,
         "ip": get_local_ip(),
         "port": SERVER_PORT,
+        "has_claude_token": has_claude_token,
     }
 
     payload = build_qr_payload(env)

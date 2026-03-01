@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import logging
+from pathlib import Path
+
 from fastapi import APIRouter, Header, HTTPException
 from supabase import create_client
 
@@ -20,7 +24,48 @@ from api.session import (
 from glyx_python_sdk.settings import settings
 from glyx_python_sdk.types import AuthResponse, AuthSignInRequest, AuthSignUpRequest
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+
+CLAUDE_CREDS_PATH = Path.home() / ".claude" / ".credentials.json"
+
+
+def _read_local_claude_code_token() -> str | None:
+    """Read the Claude Code OAuth token from ~/.claude/.credentials.json."""
+    if not CLAUDE_CREDS_PATH.exists():
+        return None
+    try:
+        data = json.loads(CLAUDE_CREDS_PATH.read_text())
+        oauth = data.get("claudeAiOauth", {})
+        return oauth.get("accessToken") or None
+    except Exception:
+        return None
+
+
+def _store_claude_code_token(user_id: str, access_token: str) -> None:
+    """Read the local Claude Code token and upsert into user_integrations.
+
+    Uses provider='claude_code' in the existing user_integrations table.
+    """
+    token = _read_local_claude_code_token()
+    if not token:
+        return
+
+    try:
+        client = create_client(settings.supabase_url, settings.supabase_service_role_key)
+        client.table("user_integrations").upsert(
+            {
+                "user_id": user_id,
+                "provider": "claude_code",
+                "access_token": token,
+            },
+            on_conflict="user_id,provider",
+        ).execute()
+        logger.info(f"[Auth] Stored Claude Code token for user {user_id[:8]}")
+    except Exception as e:
+        # Non-fatal — cloud provisioning will just not have the token
+        logger.warning(f"[Auth] Failed to store Claude Code token: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +139,9 @@ async def api_auth_provision(body: ProvisionRequest) -> ProvisionResponse:
     Called by the iOS app after QR code pairing. Stores tokens in
     ~/.glyx/session (0600) so the local executor can subscribe to
     Supabase Realtime without a service role key.
+
+    Also reads the local Claude Code OAuth token (if present) and stores
+    it to Supabase so the cloud provisioning API can use it later.
     """
     result = validate_access_token(body.access_token)
     if not result:
@@ -106,6 +154,9 @@ async def api_auth_provision(body: ProvisionRequest) -> ProvisionResponse:
     from api.local_executor import notify_session_provisioned
 
     await notify_session_provisioned()
+
+    # Store Claude Code token to Supabase if available on this machine
+    _store_claude_code_token(user_id, body.access_token)
 
     return ProvisionResponse(status=ProvisionStatus.PROVISIONED, user_id=user_id, email=email)
 
