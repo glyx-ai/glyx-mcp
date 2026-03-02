@@ -10,7 +10,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any
 
 import segno
 import typer
@@ -42,16 +42,6 @@ LOGO = "\n".join([
 
 console = Console(force_terminal=True)
 app = typer.Typer(add_completion=False)
-
-
-class PairEnv(TypedDict):
-    device_id: str
-    hostname: str
-    username: str
-    agents: list[str]
-    ip: str
-    port: int
-    has_claude_token: bool
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -150,7 +140,7 @@ def free_port(port: int) -> None:
                 _run(["kill", "-9", pid])
 
 
-def qr_payload(env: PairEnv) -> str:
+def qr_payload(env: dict[str, Any]) -> str:
     parts = [
         f"glyx://pair?device_id={env['device_id']}",
         f"&host={env['hostname']}",
@@ -181,7 +171,7 @@ def render_qr(payload: str) -> Panel:
     )
 
 
-def render_info(env: PairEnv) -> Panel:
+def render_info(env: dict[str, Any]) -> Panel:
     lines = [
         f"  [{DIM}]Device[/]   [bold white]{env['hostname']}[/] [{DIM}]({env['username']})[/]",
         f"  [{DIM}]IP[/]       [bold white]{env['ip']}:{env['port']}[/]",
@@ -252,7 +242,7 @@ def pair() -> None:
     if not has_token and "claude" in agents:
         has_token = offer_claude_auth()
 
-    env: PairEnv = {
+    env = {
         "device_id": device_id(),
         "hostname": platform.node().split(".")[0],
         "username": os.getenv("USER", "unknown"),
@@ -285,7 +275,7 @@ def pair() -> None:
     env_file = GLYX_DIR / "env"
 
     run_env = os.environ.copy()
-    run_env["GLYX_DEVICE_ID"] = env["device_id"]
+    run_env["GLYX_DEVICE_ID"] = str(env["device_id"])
 
     if env_file.exists():
         for line in env_file.read_text().splitlines():
