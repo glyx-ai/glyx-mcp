@@ -240,6 +240,18 @@ def main() -> None:
     console.print(Align.center(Text("Waiting for connection ...  Ctrl+C to exit", style=DIM)))
     console.print()
 
+    # Kill any existing server on the port before starting
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f":{SERVER_PORT}"],
+            capture_output=True, text=True,
+        )
+        for pid in result.stdout.strip().split("\n"):
+            if pid:
+                subprocess.run(["kill", "-9", pid], capture_output=True)
+    except Exception:
+        pass
+
     # Hand off to the MCP server
     repo_dir = str(GLYX_DIR / "glyx-mcp")
     env_file = GLYX_DIR / "env"

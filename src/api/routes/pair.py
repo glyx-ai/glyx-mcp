@@ -93,7 +93,9 @@ fi
 # ── Step 2: Repository ──────────────────────────────────────
 if [[ -d "$REPO_DIR/.git" ]]; then
     spin "Updating glyx"
-    cd "$REPO_DIR" && git pull --quiet >/dev/null 2>&1
+    cd "$REPO_DIR"
+    git checkout -- . >/dev/null 2>&1 || true
+    git pull --quiet >/dev/null 2>&1 || true
     ok "Updated glyx"
 else
     spin "Downloading glyx"
