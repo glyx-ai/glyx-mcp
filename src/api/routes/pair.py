@@ -32,7 +32,7 @@ R='\033[0m'
 # ── UI helpers ───────────────────────────────────────────────
 FRAMES=('⣾' '⣽' '⣻' '⢿' '⡿' '⣟' '⣯' '⣷')
 _pid=""
-spin()  { ( i=0; while :; do printf "\r  ${C}${FRAMES[$((i%8))]}${R}  ${W}%s${R}\033[K" "$1"; sleep 0.07; ((i++)); done ) & _pid=$!; }
+spin()  { ( set +e; trap 'exit 0' TERM; i=0; while :; do printf "\r  ${C}${FRAMES[$((i%8))]}${R}  ${W}%s${R}\033[K" "$1"; sleep 0.07; ((i++)); done ) & _pid=$!; }
 stop()  { kill "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null; }
 ok()    { stop; printf "\r  ${G}✓${R}  %s\033[K\n" "$1"; }
 found() { printf "  ${G}✓${R}  ${D}%s${R}\n" "$1"; }

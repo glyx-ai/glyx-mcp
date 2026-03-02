@@ -32,6 +32,15 @@ class TestPairScript:
     def test_hands_off_to_python(self):
         assert "exec uv run python3 scripts/pair_display.py" in PAIR_SCRIPT
 
+    def test_spinner_safe_under_set_e(self):
+        """Spinner must exit cleanly when killed so `set -e` doesn't abort the script.
+
+        Without `set +e` and `trap 'exit 0' TERM` in the spinner subshell,
+        `wait` returns 143 (SIGTERM exit code) and `set -e` kills the script.
+        """
+        assert "set +e" in PAIR_SCRIPT
+        assert "trap 'exit 0' TERM" in PAIR_SCRIPT
+
 
 # ── pair_display.py content ──────────────────────────────────
 
