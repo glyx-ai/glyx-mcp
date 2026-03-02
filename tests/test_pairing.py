@@ -32,15 +32,15 @@ class TestPairCLI:
     """The Python CLI module must be importable and have key functions."""
 
     def test_importable(self):
-        from cli.pair import app
+        from glyx.cli.pair import app
         assert app is not None
 
     def test_has_pair_command(self):
-        from cli.pair import pair
+        from glyx.cli.pair import pair
         assert callable(pair)
 
     def test_has_qr_payload(self):
-        from cli.pair import qr_payload
+        from glyx.cli.pair import qr_payload
         env = {
             "device_id": "test-id",
             "hostname": "test-host",
@@ -56,5 +56,5 @@ class TestPairCLI:
         assert "has_claude_token=1" in payload
 
     def test_has_free_port(self):
-        from cli.pair import free_port
+        from glyx.cli.pair import free_port
         assert callable(free_port)

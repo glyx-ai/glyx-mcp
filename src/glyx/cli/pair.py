@@ -7,10 +7,10 @@ import platform
 import shutil
 import socket
 import subprocess
-import sys
 import time
 import uuid
 from pathlib import Path
+from typing import Any, TypedDict
 
 import segno
 import typer
@@ -44,10 +44,20 @@ console = Console(force_terminal=True)
 app = typer.Typer(add_completion=False)
 
 
+class PairEnv(TypedDict):
+    device_id: str
+    hostname: str
+    username: str
+    agents: list[str]
+    ip: str
+    port: int
+    has_claude_token: bool
+
+
 # ── Helpers ──────────────────────────────────────────────────
 
 
-def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
 
 
@@ -55,7 +65,7 @@ def local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+        ip: str = s.getsockname()[0]
         s.close()
         return ip
     except Exception:
@@ -140,7 +150,7 @@ def free_port(port: int) -> None:
                 _run(["kill", "-9", pid])
 
 
-def qr_payload(env: dict) -> str:
+def qr_payload(env: PairEnv) -> str:
     parts = [
         f"glyx://pair?device_id={env['device_id']}",
         f"&host={env['hostname']}",
@@ -171,7 +181,7 @@ def render_qr(payload: str) -> Panel:
     )
 
 
-def render_info(env: dict) -> Panel:
+def render_info(env: PairEnv) -> Panel:
     lines = [
         f"  [{DIM}]Device[/]   [bold white]{env['hostname']}[/] [{DIM}]({env['username']})[/]",
         f"  [{DIM}]IP[/]       [bold white]{env['ip']}:{env['port']}[/]",
@@ -242,7 +252,7 @@ def pair() -> None:
     if not has_token and "claude" in agents:
         has_token = offer_claude_auth()
 
-    env = {
+    env: PairEnv = {
         "device_id": device_id(),
         "hostname": platform.node().split(".")[0],
         "username": os.getenv("USER", "unknown"),
