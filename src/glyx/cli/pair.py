@@ -10,6 +10,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 import segno
 import typer
@@ -46,7 +47,7 @@ app = typer.Typer(add_completion=False)
 # ── Helpers ──────────────────────────────────────────────────
 
 
-def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+def _run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, capture_output=True, text=True, **kwargs)
 
 
@@ -54,7 +55,7 @@ def local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+        ip: str = s.getsockname()[0]
         s.close()
         return ip
     except Exception:
@@ -139,7 +140,7 @@ def free_port(port: int) -> None:
                 _run(["kill", "-9", pid])
 
 
-def qr_payload(env: dict) -> str:
+def qr_payload(env: dict[str, Any]) -> str:
     parts = [
         f"glyx://pair?device_id={env['device_id']}",
         f"&host={env['hostname']}",
@@ -170,7 +171,7 @@ def render_qr(payload: str) -> Panel:
     )
 
 
-def render_info(env: dict) -> Panel:
+def render_info(env: dict[str, Any]) -> Panel:
     lines = [
         f"  [{DIM}]Device[/]   [bold white]{env['hostname']}[/] [{DIM}]({env['username']})[/]",
         f"  [{DIM}]IP[/]       [bold white]{env['ip']}:{env['port']}[/]",
@@ -274,7 +275,7 @@ def pair() -> None:
     env_file = GLYX_DIR / "env"
 
     run_env = os.environ.copy()
-    run_env["GLYX_DEVICE_ID"] = env["device_id"]
+    run_env["GLYX_DEVICE_ID"] = str(env["device_id"])
 
     if env_file.exists():
         for line in env_file.read_text().splitlines():
