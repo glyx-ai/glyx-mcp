@@ -21,6 +21,7 @@ dependencies = [
     "strenum>=0.4.15",
     "rich>=13.0.0",
     "segno>=1.6.0",
+    "typer>=0.15.0",
     "taskipy>=1.12.0",
     "google-cloud-run>=0.10.0",
 ]
@@ -45,6 +46,7 @@ glyx-mcp = "glyx_mcp.server:main"
 glyx-mcp-http = "api.server:run_http"
 glyx-dev = "api.server:run_dev"
 glyx-executor = "glyx_mcp.local_executor:main"
+glyx-pair = "cli.pair:app"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]
