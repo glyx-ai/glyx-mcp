@@ -1,4 +1,4 @@
-"""Device pairing endpoint for Glyx iOS app."""
+"""Device pairing endpoint — serves the bootstrap script for `curl glyx.ai/pair | bash`."""
 
 from __future__ import annotations
 
@@ -10,63 +10,42 @@ router = APIRouter(tags=["Pairing"])
 
 @router.get("/pair", response_class=PlainTextResponse, summary="Get pairing script")
 async def get_pair_script() -> str:
-    """
-    Returns a shell script that sets up device pairing for the Glyx iOS app.
+    """Bootstrap script that installs glyx and launches the pairing display.
 
-    Usage:
-        curl -sL api.glyx.ai/pair | bash
-
-    The script will:
-    1. Generate a unique pairing code
-    2. Start the glyx MCP executor
-    3. Display a QR code for the iOS app to scan
+    Usage: curl -sL glyx.ai/pair | bash
     """
     return PAIR_SCRIPT
 
 
 PAIR_SCRIPT = r"""#!/bin/bash
-# Glyx Device Pairing Script
-# Usage: curl -sL glyx.ai/pair | bash
-set -e
+# Glyx — curl glyx.ai/pair | bash
+set -euo pipefail
 
-# ── 256-color palette ────────────────────────────────────────
-P='\033[38;5;135m'    # brand purple
-PB='\033[1;38;5;135m' # brand purple bold
-C='\033[38;5;81m'     # cyan
-G='\033[38;5;114m'    # green
-W='\033[1;37m'        # white bold
-D='\033[38;5;243m'    # dim gray
-R='\033[0m'           # reset
+# ── Palette ──────────────────────────────────────────────────
+PB='\033[1;38;5;135m'
+C='\033[38;5;81m'
+G='\033[38;5;114m'
+W='\033[1;37m'
+D='\033[38;5;243m'
+R='\033[0m'
 
-# ── Spinner ──────────────────────────────────────────────────
+# ── UI helpers ───────────────────────────────────────────────
 FRAMES=('⣾' '⣽' '⣻' '⢿' '⡿' '⣟' '⣯' '⣷')
 _pid=""
-spin() {
-    ( i=0; while :; do
-        printf "\r  ${C}${FRAMES[$((i%8))]}${R}  ${W}%s${R}\033[K" "$1"
-        sleep 0.07; ((i++))
-    done ) & _pid=$!
-}
-ok() {
-    kill "$_pid" 2>/dev/null
-    wait "$_pid" 2>/dev/null || true
-    printf "\r  ${G}✓${R}  %s\033[K\n" "$1"
-}
-skip() { printf "  ${G}✓${R}  ${D}%s${R}\n" "$1"; }
+spin()  { ( i=0; while :; do printf "\r  ${C}${FRAMES[$((i%8))]}${R}  ${W}%s${R}\033[K" "$1"; sleep 0.07; ((i++)); done ) & _pid=$!; }
+stop()  { kill "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null; }
+ok()    { stop; printf "\r  ${G}✓${R}  %s\033[K\n" "$1"; }
+found() { printf "  ${G}✓${R}  ${D}%s${R}\n" "$1"; }
 
 # ── Config ───────────────────────────────────────────────────
 GLYX_DIR="$HOME/.glyx"
 REPO_DIR="$GLYX_DIR/glyx-mcp"
 REPO_URL="https://github.com/glyx-ai/glyx-mcp.git"
-mkdir -p "$GLYX_DIR"
 
-cleanup() {
-    printf '\033[?25h'
-    jobs -p 2>/dev/null | xargs kill 2>/dev/null || true
-}
+cleanup() { printf '\033[?25h'; jobs -p 2>/dev/null | xargs kill 2>/dev/null; true; }
 trap cleanup INT TERM EXIT
 
-# ── Immediate output ─────────────────────────────────────────
+# ── Banner ───────────────────────────────────────────────────
 printf '\033[?25l'
 clear
 printf "\n"
@@ -81,37 +60,31 @@ printf "  ${D}Control AI coding agents from your phone.${R}\n"
 printf "  ${D}──────────────────────────────────────────${R}\n\n"
 
 # ── Step 1: uv ──────────────────────────────────────────────
-if ! command -v uv &>/dev/null; then
+if command -v uv &>/dev/null; then
+    found "uv"
+else
     spin "Installing uv"
     curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
     export PATH="$HOME/.local/bin:$PATH"
     ok "Installed uv"
-else
-    skip "uv"
 fi
 
-# ── Step 2: Repository ──────────────────────────────────────
-if [[ -d "$REPO_DIR/.git" ]]; then
-    spin "Updating glyx"
-    cd "$REPO_DIR"
-    git checkout -- . >/dev/null 2>&1 || true
-    git pull --quiet >/dev/null 2>&1 || true
-    ok "Updated glyx"
-else
-    spin "Downloading glyx"
-    git clone --quiet "$REPO_URL" "$REPO_DIR" >/dev/null 2>&1
-    ok "Downloaded glyx"
-fi
+# ── Step 2: Repository (always start from known-good state) ─
+spin "Syncing glyx"
+mkdir -p "$GLYX_DIR"
+rm -rf "$REPO_DIR"
+git clone --quiet --depth 1 "$REPO_URL" "$REPO_DIR" >/dev/null 2>&1
+ok "Synced glyx"
 
 # ── Step 3: Dependencies ────────────────────────────────────
 spin "Installing dependencies"
 cd "$REPO_DIR"
-uv sync >/dev/null 2>&1
+uv sync --quiet >/dev/null 2>&1
 ok "Dependencies ready"
 
 printf "\n"
 
-# ── Hand off to Rich ────────────────────────────────────────
+# ── Hand off to Python ──────────────────────────────────────
 printf '\033[?25h'
 exec uv run python3 scripts/pair_display.py
 """

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Beautiful terminal pairing experience powered by Rich + segno."""
+"""Pairing display — QR code + MCP server startup."""
 
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-# ── Brand palette ───────────────────────────────────────────
+# ── Brand ────────────────────────────────────────────────────
+
 BRAND = "bright_magenta"
 ACCENT = "cyan"
 DIM = "dim"
@@ -33,10 +34,10 @@ SERVER_PORT = 8000
 console = Console(force_terminal=True)
 
 
-# ── Helpers ─────────────────────────────────────────────────
+# ── Environment detection ────────────────────────────────────
 
 
-def get_local_ip() -> str:
+def local_ip() -> str:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -47,59 +48,40 @@ def get_local_ip() -> str:
         return "localhost"
 
 
-def get_or_create_device_id() -> str:
+def device_id() -> str:
     if DEVICE_ID_FILE.exists():
         return DEVICE_ID_FILE.read_text().strip()
-    device_id = str(uuid.uuid4())
+    did = str(uuid.uuid4())
     GLYX_DIR.mkdir(parents=True, exist_ok=True)
-    DEVICE_ID_FILE.write_text(device_id)
-    return device_id
+    DEVICE_ID_FILE.write_text(did)
+    return did
 
 
-def detect_agents() -> list[str]:
+def installed_agents() -> list[str]:
     return [a for a in ("claude", "cursor", "codex", "aider") if shutil.which(a)]
 
 
-CLAUDE_CREDS_PATH = Path.home() / ".claude" / ".credentials.json"
-
-
-def read_claude_code_token() -> str | None:
-    """Read the Claude Code OAuth token from ~/.claude/.credentials.json."""
-    if not CLAUDE_CREDS_PATH.exists():
+def claude_code_token() -> str | None:
+    creds = Path.home() / ".claude" / ".credentials.json"
+    if not creds.exists():
         return None
     try:
-        data = json.loads(CLAUDE_CREDS_PATH.read_text())
-        oauth = data.get("claudeAiOauth", {})
+        oauth = json.loads(creds.read_text()).get("claudeAiOauth", {})
         return oauth.get("accessToken") or None
     except Exception:
         return None
 
 
-def ensure_claude_code_auth() -> bool:
-    """Ensure user is authenticated with Claude Code.
-
-    If `claude` is installed but no token exists, run `claude auth login`
-    interactively so the user can authenticate via browser. Returns True
-    if a valid token is available after this step.
-    """
-    # Not installed — nothing we can do
+def offer_claude_auth() -> bool:
+    """Prompt user to authenticate Claude Code if installed but not authed."""
     if not shutil.which("claude"):
         return False
-
-    # Already authenticated
-    if read_claude_code_token():
+    if claude_code_token():
         return True
 
-    # Offer interactive login
     console.print()
-    console.print(
-        f"  [{ACCENT}]Claude Code[/] detected but not authenticated.",
-        highlight=False,
-    )
-    console.print(
-        f"  [{DIM}]Sign in to enable Cloud Agent — run agents from anywhere.[/]",
-        highlight=False,
-    )
+    console.print(f"  [{ACCENT}]Claude Code[/] detected but not authenticated.", highlight=False)
+    console.print(f"  [{DIM}]Sign in to enable Cloud Agent — run agents from anywhere.[/]", highlight=False)
     console.print()
 
     try:
@@ -115,21 +97,15 @@ def ensure_claude_code_auth() -> bool:
     console.print()
 
     try:
-        result = subprocess.run(
-            ["claude", "auth", "login"],
-            timeout=120,
-        )
+        result = subprocess.run(["claude", "auth", "login"], timeout=120)
         if result.returncode != 0:
             console.print(f"  [{DIM}]Authentication failed — skipping cloud setup.[/]")
             return False
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, Exception):
         console.print(f"  [{DIM}]Authentication timed out — skipping cloud setup.[/]")
         return False
-    except Exception:
-        return False
 
-    # Verify token was created
-    if read_claude_code_token():
+    if claude_code_token():
         console.print(f"  [bold {ACCENT}]✓[/] Claude Code authenticated")
         return True
 
@@ -137,46 +113,56 @@ def ensure_claude_code_auth() -> bool:
     return False
 
 
-def build_qr_payload(env: dict[str, str | int | list[str]]) -> str:
-    payload = (
-        f"glyx://pair?"
-        f"device_id={env['device_id']}"
-        f"&host={env['hostname']}"
-        f"&user={env['username']}"
-        f"&name={env['hostname']}"
-        f"&ip={env['ip']}"
-        f"&server_port={env['port']}"
-    )
-    if env["agents"]:
-        payload += f"&agents={','.join(env['agents'])}"
-    if env.get("has_claude_token"):
-        payload += "&has_claude_token=1"
-    return payload
+# ── Port management ──────────────────────────────────────────
 
 
-# ── Rich renderables ────────────────────────────────────────
+def free_port(port: int) -> None:
+    """Ensure the given port is available by stopping any process using it."""
+    result = subprocess.run(["lsof", "-ti", f":{port}"], capture_output=True, text=True)
+    pids = [p for p in result.stdout.strip().split("\n") if p]
+    for pid in pids:
+        subprocess.run(["kill", "-9", pid], capture_output=True)
 
 
-def logo_text() -> Text:
-    lines = [
-        "   ██████╗ ██╗  ██╗   ██╗██╗  ██╗",
-        "  ██╔════╝ ██║  ╚██╗ ██╔╝╚██╗██╔╝",
-        "  ██║  ███╗██║   ╚████╔╝  ╚███╔╝ ",
-        "  ██║   ██║██║    ╚██╔╝   ██╔██╗ ",
-        "  ╚██████╔╝██████╗ ██║   ██╔╝ ██╗",
-        "   ╚═════╝ ╚═════╝ ╚═╝   ╚═╝  ╚═╝",
+# ── QR payload ───────────────────────────────────────────────
+
+
+def qr_payload(env: dict) -> str:
+    parts = [
+        f"glyx://pair?device_id={env['device_id']}",
+        f"&host={env['hostname']}",
+        f"&user={env['username']}",
+        f"&name={env['hostname']}",
+        f"&ip={env['ip']}",
+        f"&server_port={env['port']}",
     ]
-    return Text("\n".join(lines), style=f"bold {BRAND}")
+    if env["agents"]:
+        parts.append(f"&agents={','.join(env['agents'])}")
+    if env.get("has_claude_token"):
+        parts.append("&has_claude_token=1")
+    return "".join(parts)
 
 
-def qr_panel(payload: str) -> Panel:
+# ── Rich renderables ─────────────────────────────────────────
+
+
+LOGO = "\n".join([
+    "   ██████╗ ██╗  ██╗   ██╗██╗  ██╗",
+    "  ██╔════╝ ██║  ╚██╗ ██╔╝╚██╗██╔╝",
+    "  ██║  ███╗██║   ╚████╔╝  ╚███╔╝ ",
+    "  ██║   ██║██║    ╚██╔╝   ██╔██╗ ",
+    "  ╚██████╔╝██████╗ ██║   ██╔╝ ██╗",
+    "   ╚═════╝ ╚═════╝ ╚═╝   ╚═╝  ╚═╝",
+])
+
+
+def render_qr(payload: str) -> Panel:
     qr = segno.make(payload, error="m")
     buf = io.StringIO()
     qr.terminal(out=buf, compact=True)
-    qr_str = buf.getvalue()
 
     return Panel(
-        Align.center(Text.from_ansi(qr_str)),
+        Align.center(Text.from_ansi(buf.getvalue())),
         title=f"[bold {BRAND}] Scan with Glyx iOS [/]",
         subtitle=f"[{DIM}]Point your camera at this code[/{DIM}]",
         box=box.ROUNDED,
@@ -185,74 +171,59 @@ def qr_panel(payload: str) -> Panel:
     )
 
 
-def info_panel(env: dict[str, str | int | list[str]]) -> Panel:
-    lines: list[str] = []
-    lines.append(f"  [{DIM}]Device[/]   [bold white]{env['hostname']}[/] [{DIM}]({env['username']})[/]")
-    lines.append(f"  [{DIM}]IP[/]       [bold white]{env['ip']}:{env['port']}[/]")
+def render_info(env: dict) -> Panel:
+    lines = [
+        f"  [{DIM}]Device[/]   [bold white]{env['hostname']}[/] [{DIM}]({env['username']})[/]",
+        f"  [{DIM}]IP[/]       [bold white]{env['ip']}:{env['port']}[/]",
+    ]
     if env["agents"]:
-        agent_str = "  ".join(f"[{ACCENT}]{a}[/]" for a in env["agents"])
-        lines.append(f"  [{DIM}]Agents[/]   {agent_str}")
+        agents = "  ".join(f"[{ACCENT}]{a}[/]" for a in env["agents"])
+        lines.append(f"  [{DIM}]Agents[/]   {agents}")
     if env.get("has_claude_token"):
         lines.append(f"  [{DIM}]Cloud[/]    [{ACCENT}]Claude Code token ready[/]")
 
-    return Panel(
-        "\n".join(lines),
-        box=box.SIMPLE,
-        padding=(0, 1),
-    )
+    return Panel("\n".join(lines), box=box.SIMPLE, padding=(0, 1))
 
 
-# ── Main ────────────────────────────────────────────────────
+# ── Main ─────────────────────────────────────────────────────
 
 
 def main() -> None:
-    # Detect environment (fast -- no spinner needed)
-    agents = detect_agents()
-    has_claude_token = bool(read_claude_code_token())
+    agents = installed_agents()
+    has_token = bool(claude_code_token())
 
-    # If Claude Code is installed but not authenticated, offer interactive login
-    if not has_claude_token and "claude" in agents:
-        has_claude_token = ensure_claude_code_auth()
+    if not has_token and "claude" in agents:
+        has_token = offer_claude_auth()
 
     env = {
-        "device_id": get_or_create_device_id(),
+        "device_id": device_id(),
         "hostname": platform.node().split(".")[0],
         "username": os.getenv("USER", "unknown"),
         "agents": agents,
-        "ip": get_local_ip(),
+        "ip": local_ip(),
         "port": SERVER_PORT,
-        "has_claude_token": has_claude_token,
+        "has_claude_token": has_token,
     }
 
-    payload = build_qr_payload(env)
+    payload = qr_payload(env)
 
-    # Brief pause so bash checkmarks are visible before we clear
+    # Brief pause so bash checkmarks are visible before clear
     time.sleep(0.4)
 
-    # Render the pairing screen
+    # Display pairing screen
     console.clear()
     console.print()
-    console.print(Align.center(logo_text()))
+    console.print(Align.center(Text(LOGO, style=f"bold {BRAND}")))
     console.print()
-    console.print(qr_panel(payload))
-    console.print(info_panel(env))
+    console.print(render_qr(payload))
+    console.print(render_info(env))
     console.print()
     console.print(Align.center(Text("Waiting for connection ...  Ctrl+C to exit", style=DIM)))
     console.print()
 
-    # Kill any existing server on the port before starting
-    try:
-        result = subprocess.run(
-            ["lsof", "-ti", f":{SERVER_PORT}"],
-            capture_output=True, text=True,
-        )
-        for pid in result.stdout.strip().split("\n"):
-            if pid:
-                subprocess.run(["kill", "-9", pid], capture_output=True)
-    except Exception:
-        pass
+    # Free port and start MCP server
+    free_port(SERVER_PORT)
 
-    # Hand off to the MCP server
     repo_dir = str(GLYX_DIR / "glyx-mcp")
     env_file = GLYX_DIR / "env"
 
