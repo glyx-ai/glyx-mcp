@@ -4,6 +4,7 @@ import io
 import json
 import os
 import platform
+import secrets
 import shutil
 import socket
 import subprocess
@@ -12,6 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Any, TypedDict
 
+import httpx
 import segno
 import typer
 from rich import box
@@ -30,6 +32,16 @@ GLYX_DIR = Path.home() / ".glyx"
 DEVICE_ID_FILE = GLYX_DIR / "device_id"
 REPO_URL = "https://github.com/glyx-ai/glyx-mcp.git"
 SERVER_PORT = 8000
+
+# Supabase (same values as cloud-template/server.py)
+SUPA_URL = os.environ.get("SUPABASE_URL", "https://vpopliwokdmpxhmippwc.supabase.co")
+SUPA_KEY = os.environ.get(
+    "SUPABASE_ANON_KEY",
+    "sb_publishable_PFYg1B15pdweWFaL6BRDCQ_SnX-BbZf",
+)
+
+# Alphabet without ambiguous chars (0/O, 1/I/L)
+PAIRING_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 LOGO = "\n".join([
     "   ██████╗ ██╗  ██╗   ██╗██╗  ██╗",
@@ -181,6 +193,66 @@ def render_qr(payload: str) -> Panel:
     )
 
 
+def generate_pairing_code() -> str:
+    return "".join(secrets.choice(PAIRING_ALPHABET) for _ in range(6))
+
+
+def store_pairing_code(
+    code: str, payload: str, token: str | None = None, retries: int = 3
+) -> str:
+    """Store code→payload in Supabase pairing_codes table. Returns the stored code.
+
+    Retries with a fresh code on 409 (unique constraint collision).
+    """
+    url = f"{SUPA_URL}/rest/v1/pairing_codes"
+    headers = {
+        "apikey": SUPA_KEY,
+        "Authorization": f"Bearer {SUPA_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+
+    row: dict[str, str] = {"code": code, "payload": payload}
+    if token:
+        row["claude_token"] = token
+
+    for attempt in range(retries):
+        resp = httpx.post(url, json=row, headers=headers)
+        if resp.status_code == 201:
+            return code
+        if resp.status_code == 409 and attempt < retries - 1:
+            code = generate_pairing_code()
+            row["code"] = code
+            continue
+        resp.raise_for_status()
+
+    return code
+
+
+def cleanup_expired_codes() -> None:
+    """Best-effort delete of expired pairing codes."""
+    url = f"{SUPA_URL}/rest/v1/pairing_codes?expires_at=lt.now()"
+    headers = {
+        "apikey": SUPA_KEY,
+        "Authorization": f"Bearer {SUPA_KEY}",
+    }
+    try:
+        httpx.delete(url, headers=headers)
+    except Exception:
+        pass  # non-critical
+
+
+def render_pairing_code(code: str) -> Panel:
+    spaced = "  ".join(code[:3]) + "  -  " + "  ".join(code[3:])
+    return Panel(
+        Align.center(Text(spaced, style=f"bold {ACCENT}")),
+        title=f"[{DIM}] Or enter this code in the app [/{DIM}]",
+        box=box.ROUNDED,
+        border_style=DIM,
+        padding=(0, 4),
+    )
+
+
 def render_info(env: PairEnv) -> Panel:
     lines = [
         f"  [{DIM}]Device[/]   [bold white]{env['hostname']}[/] [{DIM}]({env['username']})[/]",
@@ -240,12 +312,7 @@ def pair() -> None:
     console.print(f"  [{DIM}]──────────────────────────────────────────[/]")
     console.print()
 
-    # Setup steps
-    step_ensure_uv()
-    step_sync_repo()
-    step_install_deps()
-
-    # Detect environment
+    # Detect environment (fast — no network calls)
     agents = installed_agents()
     has_token = bool(claude_code_token())
 
@@ -264,19 +331,33 @@ def pair() -> None:
 
     payload = qr_payload(env)
 
-    # Brief pause so checkmarks are visible before clear
-    time.sleep(0.4)
+    # Generate and store pairing code (include Claude Code token for cloud provisioning)
+    code = generate_pairing_code()
+    cc_token = claude_code_token() if has_token else None
+    try:
+        cleanup_expired_codes()
+        code = store_pairing_code(code, payload, token=cc_token)
+    except Exception as exc:
+        console.print(f"  [{DIM}]Pairing code unavailable: {exc}[/]")
+        code = ""
 
-    # Display pairing screen
+    # Display pairing screen immediately (before slow repo sync)
     console.clear()
     console.print()
     console.print(Align.center(Text(LOGO, style=f"bold {BRAND}")))
     console.print()
     console.print(render_qr(payload))
+    if code:
+        console.print(render_pairing_code(code))
     console.print(render_info(env))
     console.print()
     console.print(Align.center(Text("Waiting for connection ...  Ctrl+C to exit", style=DIM)))
     console.print()
+
+    # Setup steps (repo + deps for MCP executor — runs while user scans)
+    step_ensure_uv()
+    step_sync_repo()
+    step_install_deps()
 
     # Free port and start MCP server
     free_port(SERVER_PORT)
