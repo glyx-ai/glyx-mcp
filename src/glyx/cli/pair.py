@@ -162,7 +162,7 @@ def free_port(port: int) -> None:
                 _run(["kill", "-9", pid])
 
 
-def qr_payload(env: PairEnv) -> str:
+def qr_payload(env: PairEnv, code: str = "") -> str:
     parts = [
         f"glyx://pair?device_id={env['device_id']}",
         f"&host={env['hostname']}",
@@ -175,6 +175,8 @@ def qr_payload(env: PairEnv) -> str:
         parts.append(f"&agents={','.join(env['agents'])}")
     if env.get("has_claude_token"):
         parts.append("&has_claude_token=1")
+    if code:
+        parts.append(f"&code={code}")
     return "".join(parts)
 
 
@@ -329,11 +331,13 @@ def pair() -> None:
         "has_claude_token": has_token,
     }
 
-    payload = qr_payload(env)
-
-    # Generate and store pairing code (include Claude Code token for cloud provisioning)
+    # Generate pairing code first so it can be embedded in the QR payload
     code = generate_pairing_code()
     cc_token = claude_code_token() if has_token else None
+
+    payload = qr_payload(env, code=code)
+
+    # Store pairing code (include Claude Code token for cloud provisioning)
     try:
         cleanup_expired_codes()
         code = store_pairing_code(code, payload, token=cc_token)
