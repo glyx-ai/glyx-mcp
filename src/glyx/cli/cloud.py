@@ -29,15 +29,6 @@ SUPA_KEY = os.environ.get(
 
 PAIRING_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
-LOGO = "\n".join([
-    "   ██████╗ ██╗  ██╗   ██╗██╗  ██╗",
-    "  ██╔════╝ ██║  ╚██╗ ██╔╝╚██╗██╔╝",
-    "  ██║  ███╗██║   ╚████╔╝  ╚███╔╝ ",
-    "  ██║   ██║██║    ╚██╔╝   ██╔██╗ ",
-    "  ╚██████╔╝██████╗ ██║   ██╔╝ ██╗",
-    "   ╚═════╝ ╚═════╝ ╚═╝   ╚═╝  ╚═╝",
-])
-
 console = Console(force_terminal=True)
 app = typer.Typer(add_completion=False)
 
@@ -84,20 +75,13 @@ def store_code(code: str, token: str, retries: int = 3) -> str:
 @app.callback(invoke_without_command=True)
 def cloud() -> None:
     """Set up your Cloud Agent with Claude Code."""
-    console.clear()
-    console.print()
-    console.print(Align.center(Text(LOGO, style=f"bold {BRAND}")))
-    console.print()
-    console.print(Align.center(Text("Cloud Agent Setup", style=f"bold {ACCENT}")))
-    console.print()
-
     # Check for Claude Code
     if not shutil.which("claude"):
         console.print(f"  [bold red]✗[/]  Claude Code not found")
         console.print(f"  [{DIM}]Install it: https://docs.anthropic.com/en/docs/claude-code[/]")
         raise typer.Exit(1)
 
-    console.print(f"  [bold {ACCENT}]✓[/]  Claude Code found")
+    console.print(f"  [bold {ACCENT}]✓[/]  Claude Code detected")
 
     # Check for token
     token = claude_code_token()
@@ -120,13 +104,14 @@ def cloud() -> None:
 
     console.print(f"  [bold {ACCENT}]✓[/]  Claude Code authenticated")
 
-    # Generate and store code
+    # Generate and store code with spinner
     code = generate_code()
-    try:
-        code = store_code(code, token)
-    except Exception as exc:
-        console.print(f"  [bold red]✗[/]  Failed to generate code: {exc}")
-        raise typer.Exit(1)
+    with console.status(f"  [{ACCENT}]Generating pairing code[/]", spinner="dots"):
+        try:
+            code = store_code(code, token)
+        except Exception as exc:
+            console.print(f"  [bold red]✗[/]  Failed to generate code: {exc}")
+            raise typer.Exit(1)
 
     console.print(f"  [bold {ACCENT}]✓[/]  Code generated")
     console.print()
