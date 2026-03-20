@@ -102,20 +102,20 @@ def cloud() -> None:
     # Check for token
     token = claude_code_token()
     if not token:
-        console.print(f"  [{DIM}]Not authenticated — launching login...[/]")
+        console.print(f"  [{DIM}]No token found — generating one...[/]")
         console.print()
         try:
-            result = subprocess.run(["claude", "auth", "login"], timeout=120)
+            result = subprocess.run(["claude", "setup-token"], timeout=120)
             if result.returncode != 0:
-                console.print(f"  [bold red]✗[/]  Authentication failed")
+                console.print(f"  [bold red]✗[/]  Token setup failed")
                 raise typer.Exit(1)
         except (subprocess.TimeoutExpired, Exception):
-            console.print(f"  [bold red]✗[/]  Authentication timed out")
+            console.print(f"  [bold red]✗[/]  Token setup timed out")
             raise typer.Exit(1)
 
         token = claude_code_token()
         if not token:
-            console.print(f"  [bold red]✗[/]  No token found after login")
+            console.print(f"  [bold red]✗[/]  No token found after setup")
             raise typer.Exit(1)
 
     console.print(f"  [bold {ACCENT}]✓[/]  Claude Code authenticated")
