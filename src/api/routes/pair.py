@@ -77,11 +77,11 @@ fi
 
 _spin "Preparing pairing" &
 SPIN_PID=$!
-uv tool install --force --quiet "glyx @ git+https://github.com/glyx-ai/glyx-mcp.git" >/dev/null 2>&1
+uvx --from "git+https://github.com/glyx-ai/glyx-mcp.git" python3 -c "" 2>/dev/null
 _stop_spin
 printf '  \033[1;36m✓\033[0m  Ready\n\n'
 
-exec glyx-pair
+exec uvx --from "git+https://github.com/glyx-ai/glyx-mcp.git" glyx-pair
 """
 
 CLOUD_SCRIPT = r"""#!/bin/bash
@@ -135,13 +135,13 @@ else
   printf '  \033[1;36m✓\033[0m  uv\n'
 fi
 
-# Pre-fetch the package (the slow part) with a spinner
+# Pre-cache the package (the slow part) with a spinner, then exec
 _spin "Preparing cloud setup" &
 SPIN_PID=$!
-uv tool install --force --quiet "glyx @ git+https://github.com/glyx-ai/glyx-mcp.git" >/dev/null 2>&1
+uvx --from "git+https://github.com/glyx-ai/glyx-mcp.git" python3 -c "" 2>/dev/null
 _stop_spin
 printf '  \033[1;36m✓\033[0m  Ready\n\n'
 
-# Hand off to the CLI (instant now — already installed)
-exec glyx-cloud
+# Hand off to the CLI (instant now — cached)
+exec uvx --from "git+https://github.com/glyx-ai/glyx-mcp.git" glyx-cloud
 """
